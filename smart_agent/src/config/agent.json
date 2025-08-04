@@ -8,17 +8,7 @@
     "your_application_name"
   ],
   "maxThreads": 1,
-  "inputs": [
-    {
-      "name": "name",
-      "label": "Enter the name",
-      "type": "longText",
-      "validation": {
-        "required": true,
-        "error": "name is required"
-      }
-    }
-  ],
+  "inputs": [],
   "outputs": [
     {
       "label": "output",
