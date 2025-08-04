@@ -29,7 +29,7 @@ class Neo4jConnection:
                 return result.data()
 
 class RSSFeedProcessor:
-    def __init__(self, neo4j_url, neo4j_user, neo4j_password, scraper_proxy_url="https://0ec16f4c-f0e9-4bd8-8ae6-bf40cc3ec9e1-00-1dn61ku3n98rh.riker.replit.dev", scraper_token="7d579b76-a402-4a3a-8837-fada60aa2182", max_feed_workers=5, max_article_workers=3):
+    def __init__(self, neo4j_url, neo4j_user, neo4j_password, scraper_proxy_url="https://scraper-proxy-usama14.replit.app", scraper_token="7d579b76-a402-4a3a-8837-fada60aa2182", max_feed_workers=5, max_article_workers=3):
         self.neo4j_url = neo4j_url
         self.neo4j_user = neo4j_user
         self.neo4j_password = neo4j_password
