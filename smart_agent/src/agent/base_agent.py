@@ -9,10 +9,16 @@ from datetime import datetime
 from .get_prompt_from_git import main as promptDownloader
 import json
 from .agent_config import fetch_agent_config
+from .rss_feed_processor import create_feed_processor
 import time
 
 # Configuration flag - Change this to switch between dev and prod modes
 ENVIRONMENT_MODE = "dev"  # Change to "prod" for production or dev for development
+
+# Neo4j credentials
+NEO4J_URL = "neo4j+s://ff9f9095.databases.neo4j.io"
+NEO4J_USER = "neo4j"
+NEO4J_PASSWORD = "BTpQLS4NHJ3aBpYS-7ec4hl1P9cE93L8QQa7H-enE0k"
 
 openai_api_key = os.environ.get("OPENAI_API_KEY")
 client = OpenAI(api_key=openai_api_key)
@@ -27,18 +33,18 @@ def get_prompt_file_path():
     
     if mode == "dev":
         # In dev mode, try /tmp/Prompt first, fallback to Prompt
-        tmp_prompt_path = '/tmp/Prompt/GimletGPT.yaml'
+        tmp_prompt_path = '/tmp/Prompt/source_filtering_prompt.yaml'
         if os.path.exists(tmp_prompt_path):
             return tmp_prompt_path
         else:
-            return 'Prompt/GimletGPT.yaml'
+            return 'Prompt/source_filtering_prompt.yaml'
     else:
         # In prod mode, only use Prompt folder
-        return 'Prompt/GimletGPT.yaml'
+        return 'Prompt/source_filtering_prompt.yaml'
 
 def llm(context, inquiry):
     prompt_file_path = get_prompt_file_path()
-    replacements = {"context": context, "inquiry": inquiry}
+    replacements = {"articles": context}
     system_prompt, user_prompt, model_params = extract_prompts(prompt_file_path,
                                                  **replacements)
     print("---"*30)
@@ -58,7 +64,8 @@ def llm(context, inquiry):
                     "content": user_prompt  
                 },
             ],
-            temperature=model_params['temperature'])
+            text={"format": {"type": "json_object"}},
+            reasoning={"effort": "medium"})
 
         # Extracting and cleaning the GPT response
         result = response.choices[0].message.content.strip()
@@ -78,7 +85,7 @@ def base_agent(payload):
         # Download the latest prompt files only in dev mode
         if mode == "dev":
             print("Dev mode: Downloading latest prompt files")
-            # promptDownloader()
+            promptDownloader()
         else:
             print("Prod mode: Skipping prompt download")
        
@@ -96,26 +103,51 @@ def base_agent(payload):
             payload.get('id'), {
                 "status": "inprogress",
                 "data": {
-                    "info": "Waiting 60 seconds",
+                    "info": "Starting fully multithreaded RSS feed and article processing",
                 },
             })
-        time.sleep(60)
-        # output = llm(
-        #     context=f"Agent Name: {agent_name}, Request ID: {request_id}",
-        #     inquiry=payload.get('inquiry', ''))
-        # print(f"LLM Output: {output}")
-        #wait 1 minute
         
+        # Create RSS Feed Processor with configurable thread counts
+        max_feed_workers = 5  # Default 5 feed workers
+        max_article_workers = 3  # Default 3 article workers per feed
+        
+        print(f"Starting RSS feed scraping with {max_feed_workers} feed workers and {max_article_workers} article workers per feed...")
+        print(f"Total potential concurrent article processing: {max_feed_workers * max_article_workers} threads")
+        
+        feed_processor = create_feed_processor(
+            NEO4J_URL, 
+            NEO4J_USER, 
+            NEO4J_PASSWORD, 
+            max_feed_workers=max_feed_workers,
+            max_article_workers=max_article_workers
+        )
+        result = feed_processor.process_all_feeds(days_back=3)
+        
+        if result["success"]:
+            call_webhook_with_success(
+                payload.get('id'), {
+                    "status": "inprogress",
+                    "data": {
+                        "info": f"Successfully processed {result['total_articles']} articles from {result['processed_sources']} RSS feeds using multithreaded processing"
+                    },
+                })
+        else:
+            call_webhook_with_error(payload.get('id'), result["message"], 500)
+            return
+        
+        # Reduced wait time since multithreading already speeds up the process significantly
+        time.sleep(15)  # Further reduced from 30 seconds due to much faster processing
         
         name = payload.get('name', '')
-        msg = f"Hi {name}, how are you?"
+        performance_stats = result.get('performance_stats', {})
+        msg = f"Hi {name}, successfully processed {result['total_articles']} articles from {result['processed_sources']} RSS feeds using fully multithreaded processing! Found {result.get('total_articles_found', 0)} total articles, processed {result.get('total_articles_processed', 0)} individual articles with {performance_stats.get('feed_workers', 0)} feed workers and {performance_stats.get('article_workers_per_feed', 0)} article workers per feed ({result.get('successful_sources', 0)} successful, {result.get('failed_sources', 0)} failed sources)."
         print(msg)
 
         call_webhook_with_success(payload.get('id'), {
-            "status": "inprogress",
+            "status": "completed",
             "data": {
-                "title": f"We are now executing the selected prompt for our usecase",
-                "info": "Processing",
+                "title": f"Fully multithreaded RSS processing completed",
+                "info": f"Processed {result['total_articles']} articles from {result['processed_sources']} sources"
             },
         })
 
@@ -124,5 +156,4 @@ def base_agent(payload):
 
     except Exception as e:
         print(f"Error in base_agent: {e}")
-        # raise call_webhook_with_error(str(e), 500) # OLD VERSION SINGLE THREADED
-        call_webhook_with_error(payload.get('id'), str(e), 500) # MULTI THREADED
+        call_webhook_with_error(payload.get('id'), str(e), 500)
