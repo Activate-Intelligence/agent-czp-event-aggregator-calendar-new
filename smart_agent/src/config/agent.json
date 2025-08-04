@@ -1,0 +1,28 @@
+{
+  "name": "General Agent Template",
+  "description": "Template for processing content blocks",
+  "icon": "https://s3.amazonaws.com/flowxo-static/icons/flow.png",
+  "color": "#a495ed",
+  "capabilities": "Content processing and transformation",
+  "applications": [
+    "your_application_name"
+  ],
+  "maxThreads": 1,
+  "inputs": [
+    {
+      "name": "name",
+      "label": "Enter the name",
+      "type": "longText",
+      "validation": {
+        "required": true,
+        "error": "name is required"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "label": "output",
+      "type": "shortText"
+    }
+  ]
+}

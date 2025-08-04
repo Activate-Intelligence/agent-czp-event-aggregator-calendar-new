@@ -1,0 +1,257 @@
+name: Deploy agent-is-ai-news-aggregator Lambda
+
+on:
+  push:
+    branches: [main, 'prod**']
+  pull_request:
+    branches: ['prod**']
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      TF_VAR_function_name: agent-is-ai-news-aggregator
+      TF_VAR_aws_region: eu-west-2
+      S3_BUCKET: 533267084389-lambda-artifacts
+      
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Determine Environment
+        id: env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=dev" >> $GITHUB_OUTPUT
+            echo "Environment: dev (main branch)"
+          elif [[ "${{ github.ref }}" == refs/heads/prod* ]]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+            echo "Environment: prod (production branch)"
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+            echo "Environment: dev (default)"
+          fi
+          
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          pip install -r smart_agent/requirements.txt
+          pip install mangum boto3
+          
+      - name: Package Lambda
+        run: |
+          python scripts/package-lambda.py
+          
+      - name: AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          role-to-assume: arn:aws:iam::533267084389:role/github
+          aws-region: eu-west-2
+          
+      - name: Create S3 bucket if not exists
+        run: |
+          echo "Checking if S3 bucket exists..."
+          if aws s3api head-bucket --bucket $S3_BUCKET 2>/dev/null; then
+            echo "✓ S3 bucket $S3_BUCKET already exists"
+          else
+            echo "Creating S3 bucket $S3_BUCKET..."
+            aws s3api create-bucket \
+              --bucket $S3_BUCKET \
+              --region eu-west-2 \
+              --create-bucket-configuration LocationConstraint=eu-west-2
+            
+            # Enable versioning
+            aws s3api put-bucket-versioning \
+              --bucket $S3_BUCKET \
+              --versioning-configuration Status=Enabled
+            
+            # Enable encryption
+            aws s3api put-bucket-encryption \
+              --bucket $S3_BUCKET \
+              --server-side-encryption-configuration '{
+                "Rules": [
+                  {
+                    "ApplyServerSideEncryptionByDefault": {
+                      "SSEAlgorithm": "AES256"
+                    }
+                  }
+                ]
+              }'
+            
+            # Configure lifecycle policy to keep only latest version
+            aws s3api put-bucket-lifecycle-configuration \
+              --bucket $S3_BUCKET \
+              --lifecycle-configuration '{
+                "Rules": [
+                  {
+                    "ID": "KeepLatestVersionOnly",
+                    "Status": "Enabled",
+                    "Filter": {},
+                    "NoncurrentVersionExpiration": {
+                      "NoncurrentDays": 1
+                    },
+                    "ExpiredObjectDeleteMarker": true
+                  }
+                ]
+              }'
+            
+            echo "✓ S3 bucket $S3_BUCKET created successfully"
+          fi
+          
+      - name: Clean up old packages and upload latest
+        id: upload
+        run: |
+          ENVIRONMENT=${{ steps.env.outputs.environment }}
+          S3_PREFIX="agent-is-ai-news-aggregator/$ENVIRONMENT/"
+          S3_KEY="${S3_PREFIX}deployment-latest.zip"
+          
+          echo "Cleaning up old packages in $S3_PREFIX..."
+          
+          # List and delete all existing files in the environment folder
+          aws s3 ls s3://$S3_BUCKET/$S3_PREFIX || echo "No existing files found"
+          
+          # Delete all files in the environment folder
+          aws s3 rm s3://$S3_BUCKET/$S3_PREFIX --recursive || echo "No files to delete"
+          
+          echo "Uploading latest Lambda package to S3..."
+          aws s3 cp deployment.zip s3://$S3_BUCKET/$S3_KEY \
+            --metadata "deployment-timestamp=$(date -u +%Y%m%d%H%M%S),git-sha=${{ github.sha }},environment=$ENVIRONMENT"
+          
+          echo "s3_key=$S3_KEY" >> $GITHUB_OUTPUT
+          echo "s3_bucket=$S3_BUCKET" >> $GITHUB_OUTPUT
+          echo "✓ Latest package uploaded to s3://$S3_BUCKET/$S3_KEY"
+          
+          # Verify upload
+          aws s3 ls s3://$S3_BUCKET/$S3_KEY
+          
+      - name: Upload all secrets to SSM
+        env:
+          SECRETS_JSON: ${{ toJson(secrets) }}
+          ENVIRONMENT: ${{ steps.env.outputs.environment }}
+        run: |
+          echo "Uploading all repository secrets to SSM Parameter Store..."
+          
+          # Function to create or update SSM parameter
+          create_or_update_parameter() {
+            local param_name="$1"
+            local param_value="$2"
+            local param_type="$3"
+            
+            echo "Processing parameter: $param_name"
+            
+            # First, try to create the parameter with tags (new parameter)
+            if aws ssm put-parameter \
+              --name "$param_name" \
+              --value "$param_value" \
+              --type "$param_type" \
+              --tags Key=Name,Value="agent-is-ai-news-aggregator-$(basename $param_name)" Key=Environment,Value=$ENVIRONMENT Key=ManagedBy,Value=GitHubActions \
+              --no-overwrite \
+              2>/dev/null; then
+              echo "✓ Created new parameter: $param_name"
+            else
+              # Parameter exists, update it (without tags)
+              if aws ssm put-parameter \
+                --name "$param_name" \
+                --value "$param_value" \
+                --type "$param_type" \
+                --overwrite; then
+                echo "✓ Updated existing parameter: $param_name"
+                
+                # Try to add/update tags separately (ignore errors if tags already exist)
+                aws ssm add-tags-to-resource \
+                  --resource-type "Parameter" \
+                  --resource-id "$param_name" \
+                  --tags Key=Name,Value="agent-is-ai-news-aggregator-$(basename $param_name)" Key=Environment,Value=$ENVIRONMENT Key=ManagedBy,Value=GitHubActions \
+                  2>/dev/null || echo "Note: Could not update tags for $param_name (may already exist)"
+              else
+                echo "❌ Failed to create/update parameter: $param_name"
+                return 1
+              fi
+            fi
+          }
+          
+          # Parse secrets and upload each one
+          echo "$SECRETS_JSON" | jq -r 'to_entries[] | select(.key != "GITHUB_TOKEN") | @base64' | while read -r entry; do
+            # Decode the entry
+            decoded=$(echo $entry | base64 --decode)
+            
+            # Extract key and value
+            key=$(echo $decoded | jq -r '.key')
+            value=$(echo $decoded | jq -r '.value')
+            
+            # Skip empty values
+            if [ -n "$value" ] && [ "$value" != "null" ]; then
+              # Determine parameter type based on key name
+              if [[ $key == *"API_KEY"* ]] || [[ $key == *"TOKEN"* ]] || [[ $key == *"SECRET"* ]] || [[ $key == *"PASSWORD"* ]]; then
+                param_type="SecureString"
+              else
+                param_type="String"
+              fi
+              
+              # Create full parameter name with environment
+              param_name="/app/agent-is-ai-news-aggregator/$ENVIRONMENT/$key"
+              
+              # Create or update the parameter
+              create_or_update_parameter "$param_name" "$value" "$param_type"
+            else
+              echo "⚠ Skipping empty secret: $key"
+            fi
+          done
+          
+          echo "✓ All secrets processed for SSM Parameter Store"
+          
+      - name: Verify SSM parameters
+        run: |
+          ENVIRONMENT=${{ steps.env.outputs.environment }}
+          echo "Verifying uploaded parameters..."
+          aws ssm describe-parameters \
+            --parameter-filters Key=Name,Values="/app/agent-is-ai-news-aggregator/$ENVIRONMENT/" \
+            --query 'Parameters[].{Name:Name,Type:Type,LastModifiedDate:LastModifiedDate}' \
+            --output table
+            
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_wrapper: false
+          
+      - name: Terraform init + apply
+        env:
+          ENVIRONMENT: ${{ steps.env.outputs.environment }}
+        run: |
+          # Update terraform backend key with environment
+          terraform -chdir=terraform init \
+            -backend-config="region=eu-west-2" \
+            -backend-config="bucket=533267084389-tf-state" \
+            -backend-config="key=aws/$ENVIRONMENT/agents/agent-is-ai-news-aggregator" \
+            -backend-config="dynamodb_table=533267084389-tf-lock" \
+            -backend-config="encrypt=true"
+            
+          terraform -chdir=terraform apply -auto-approve \
+            -var="s3_bucket=${{ steps.upload.outputs.s3_bucket }}" \
+            -var="s3_key=${{ steps.upload.outputs.s3_key }}" \
+            -var="environment=$ENVIRONMENT"
+            
+      - name: Show endpoints
+        run: |
+          cd terraform
+          echo "::notice title=Environment::${{ steps.env.outputs.environment }}"
+          echo "::notice title=API Gateway Endpoint::$(terraform output -raw api_endpoint)"
+          echo "::notice title=Lambda Function URL::$(terraform output -raw function_url)"
+          echo "::notice title=Function Name::$(terraform output -raw function_name)"
+          echo "::notice title=DynamoDB Table::$(terraform output -raw dynamodb_table_name)"
+          echo "::notice title=S3 Package Location::s3://${{ steps.upload.outputs.s3_bucket }}/${{ steps.upload.outputs.s3_key }}"
+          echo "::notice title=SSM Parameters::$(aws ssm describe-parameters --parameter-filters Key=Name,Values=/app/agent-is-ai-news-aggregator/${{ steps.env.outputs.environment }}/ --query 'Parameters[].Name' --output table)"
+          
+      - name: Clean up local artifacts
+        run: |
+          echo "Cleaning up local build artifacts..."
+          rm -f deployment.zip
+          rm -rf package/
+          echo "✓ Local artifacts cleaned up"

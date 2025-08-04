@@ -1,0 +1,107 @@
+{
+  "name": "Gimlet Agent Template",
+  "description": "describe what this agent does",
+  "icon": "https://s3.amazonaws.com/flowxo-static/icons/flow.png",
+  "color":"#a495ed",
+  "capabilities": "...",
+  "maxThreads": 1,
+  "inputs": [
+    {
+      "name": "collectionID",
+      "label": "Enter the collectionID",
+      "type": "longText",
+      "validation": {
+        "required": true,
+        "error": "collectionID is required"
+      }
+    },
+    {
+      "name": "blockID",
+      "label": "Enter the blockID",
+      "type": "longText",
+      "validation": {
+        "required": true,
+        "error": "BlockID is required"
+      }
+    },
+    {
+      "name": "metadata",
+      "label": "Enter the metadata",
+      "type": "longText",
+      "validation": {
+        "required": true,
+        "error": "metadata is required"
+      }
+    },
+    {
+      "name": "isReplace",
+      "type": "boolean",
+      "data": false
+    },
+    {
+      "name": "blockContent",
+      "label": "Enter the content of the block",
+      "type": "longText"
+    },
+    {
+      "name": "blockContentType",
+      "label": "Select any one",
+      "type": "array-singleSelect",
+      "options": [
+        {
+          "name": "HTML",
+          "value": "html"
+        },
+        {
+          "name": "Markdown",
+          "value": "markdown"
+        },
+        {
+          "name": "Text",
+          "value": "text"
+        }
+      ]
+    },
+    {
+      "name": "features",
+      "label": "Select Features",
+      "type": "array-multiSelect",
+      "options": [
+        {
+          "name": "Feature 1",
+          "value": "feature_1"
+        },
+        {
+          "name": "Feature 2",
+          "value": "feature_2"
+        }
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "label": "collectionId",
+      "type": "shortText"
+    },
+    {
+      "label": "parentBlockId",
+      "type": "shortText"
+    },
+    {
+      "label": "metadata",
+      "type": "longText"
+    },
+    {
+      "label": "blockContentOutput",
+      "type": "longText"
+    },
+    {
+      "label": "blockContentType",
+      "type": "shortText"
+    },
+    {
+      "label": "isReplace",
+      "type": "boolean"
+    }
+  ]
+}
