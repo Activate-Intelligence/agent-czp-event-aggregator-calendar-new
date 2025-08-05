@@ -22,6 +22,10 @@
         {
           "name": "Corriere Comunicazioni",
           "url": "https://www.corrierecomunicazioni.it/feed/"
+        },
+        {
+            "name": "The Verge",
+            "url": "https://rss.app/feeds/VE1Rf2L9tFfpeTkT.xml"
         }
       ]
     },
@@ -29,8 +33,8 @@
       "category": "Newsletter",
       "sources": [
         {
-          "name": "The Rundown AI",
-          "url": "https://rss.beehiiv.com/feeds/2R3C6Bt5wj.xml"
+          "name": "TLDR AI",
+          "url": "https://tldr.tech/api/rss/ai"
         }
       ]
     },

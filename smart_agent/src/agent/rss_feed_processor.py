@@ -170,6 +170,72 @@ class RSSFeedProcessor:
             "techmeme.com" in article_url.lower()
         )
     
+    def is_tldr_source(self, source_name):
+        """Check if this is a TLDR source"""
+        return source_name.lower() == "tldr" or "tldr ai" in source_name.lower()
+    
+    def extract_tldr_articles_from_page(self, tldr_html):
+        """Extract individual articles from TLDR newsletter page"""
+        try:
+            from bs4 import BeautifulSoup
+            
+            soup = BeautifulSoup(tldr_html, 'html.parser')
+            articles = []
+            
+            # Find all article sections
+            article_sections = soup.find_all('article', class_='mt-3')
+            
+            print(f"[Thread {threading.current_thread().name}] Found {len(article_sections)} article sections in TLDR page")
+            
+            for article_section in article_sections:
+                try:
+                    # Find the main link and title
+                    main_link = article_section.find('a', class_='font-bold')
+                    if not main_link:
+                        continue
+                    
+                    article_url = main_link.get('href')
+                    if not article_url:
+                        continue
+                    
+                    # Get the title from h3
+                    title_element = main_link.find('h3')
+                    if not title_element:
+                        continue
+                    
+                    article_title = title_element.get_text(strip=True)
+                    
+                    # Get the summary from newsletter-html div
+                    summary_div = article_section.find('div', class_='newsletter-html')
+                    summary = summary_div.get_text(strip=True) if summary_div else ""
+                    
+                    # Skip sponsored content
+                    if "(Sponsor)" in article_title or "utm_source=sponsored" in article_url:
+                        print(f"[Thread {threading.current_thread().name}] Skipping sponsored content: {article_title[:50]}...")
+                        continue
+                    
+                    articles.append({
+                        'title': article_title,
+                        'url': article_url,
+                        'tldr_summary': summary
+                    })
+                    
+                    print(f"[Thread {threading.current_thread().name}] Extracted TLDR article: {article_title[:50]}...")
+                    
+                except Exception as e:
+                    print(f"[Thread {threading.current_thread().name}] Error extracting individual TLDR article: {e}")
+                    continue
+            
+            print(f"[Thread {threading.current_thread().name}] Successfully extracted {len(articles)} articles from TLDR page")
+            return articles
+            
+        except ImportError:
+            print("BeautifulSoup not available for TLDR article extraction")
+            return []
+        except Exception as e:
+            print(f"[Thread {threading.current_thread().name}] Error extracting TLDR articles: {e}")
+            return []
+    
     def extract_actual_article_url_from_techmeme(self, techmeme_html):
         """Extract the actual source article URL from Techmeme page HTML"""
         try:
@@ -513,6 +579,72 @@ class RSSFeedProcessor:
                 print(f"[Thread {threading.current_thread().name}] Failed to fetch article content via both proxy and direct request")
                 return None, article_url
     
+    def process_single_tldr_article(self, source_name, article_info, cutoff_date, existing_urls):
+        """Process a single TLDR article - designed for multithreading"""
+        try:
+            article_url = article_info['url']
+            article_title = article_info['title']
+            tldr_summary = article_info['tldr_summary']
+            
+            # EARLY CHECK: Skip if this article URL already exists in database
+            if article_url in existing_urls:
+                print(f"[Thread {threading.current_thread().name}] Skipping TLDR article - already exists in database: {article_title[:100]}...")
+                self.increment_counters(skipped_articles=1)
+                return None
+            
+            print(f"[Thread {threading.current_thread().name}] Processing new TLDR article: {article_title[:100]}...")
+            
+            # Fetch full article content
+            full_content = tldr_summary  # Fallback to TLDR summary
+            final_url = article_url
+            
+            article_content, final_article_url = self.fetch_article_content(
+                source_name, article_url, article_title
+            )
+            
+            # ADDITIONAL CHECK: After getting final URL, check if it exists
+            if final_article_url and final_article_url != article_url and final_article_url in existing_urls:
+                print(f"[Thread {threading.current_thread().name}] Skipping TLDR article - final URL already exists in database: {final_article_url}")
+                self.increment_counters(skipped_articles=1)
+                return None
+            
+            if article_content and len(article_content.strip()) > len(tldr_summary.strip()):
+                full_content = article_content
+                final_url = final_article_url
+                print(f"[Thread {threading.current_thread().name}] Used full article HTML content ({len(full_content)} chars)")
+            else:
+                print(f"[Thread {threading.current_thread().name}] Using TLDR summary ({len(tldr_summary)} chars)")
+            
+            # Brief delay to avoid overwhelming the services
+            time.sleep(0.5)
+            
+            # Filter article for AI relevance using LLM
+            print(f"[Thread {threading.current_thread().name}] Filtering TLDR article for AI relevance: {article_title}")
+            is_relevant = self.filter_article_relevance(article_title, full_content)
+            
+            # Brief delay after LLM call
+            time.sleep(0.3)
+            
+            article_data = {
+                'title': article_title,
+                'content': full_content,  # Full article content
+                'tldr_summary': tldr_summary,  # TLDR summary
+                'date': datetime.now().isoformat(),  # Use current date for TLDR articles
+                'url': final_url,  # Use the final article URL
+                'rss_url': article_url,  # Keep original TLDR URL
+                'published_date': datetime.now(),
+                'isRelevant': is_relevant,
+                'is_tldr_article': True  # Mark as TLDR article
+            }
+            
+            print(f"[Thread {threading.current_thread().name}] Successfully processed TLDR article: {article_title[:100]}...")
+            self.increment_counters(articles_processed=1)
+            return article_data
+            
+        except Exception as e:
+            print(f"[Thread {threading.current_thread().name}] Error processing TLDR article: {e}")
+            return None
+    
     def process_single_article(self, source_name, entry, cutoff_date, existing_urls):
         """Process a single article - designed for multithreading"""
         try:
@@ -594,7 +726,8 @@ class RSSFeedProcessor:
                 'url': final_url,  # Use the final article URL (actual source for Techmeme)
                 'rss_url': article_url,  # Keep original RSS URL
                 'published_date': pub_date,
-                'isRelevant': is_relevant  # Add relevance filtering result
+                'isRelevant': is_relevant,  # Add relevance filtering result
+                'is_tldr_article': False  # Not a TLDR article
             }
             
             print(f"[Thread {threading.current_thread().name}] Successfully processed article: {article_title[:100]}...")
@@ -605,8 +738,116 @@ class RSSFeedProcessor:
             print(f"[Thread {threading.current_thread().name}] Error processing article: {e}")
             return None
     
+    def parse_tldr_feed(self, source_name, feed_url, days_back=3, existing_urls=None):
+        """Parse TLDR RSS feed and extract individual articles from each newsletter"""
+        try:
+            print(f"[Thread {threading.current_thread().name}] Parsing TLDR RSS feed: {feed_url}")
+            
+            # Use existing URLs if provided, otherwise get from database
+            if existing_urls is None:
+                existing_urls = set()
+            
+            # Fetch RSS content directly
+            rss_content = self.fetch_rss_feed_directly(feed_url)
+            
+            if not rss_content:
+                print(f"[Thread {threading.current_thread().name}] Failed to fetch TLDR RSS content for {feed_url}")
+                return []
+            
+            # Parse the RSS content using feedparser
+            feed = feedparser.parse(rss_content)
+            
+            if not feed.entries:
+                print(f"[Thread {threading.current_thread().name}] No entries found in TLDR RSS feed: {feed_url}")
+                return []
+            
+            cutoff_date = datetime.now() - timedelta(days=days_back)
+            all_articles = []
+            
+            # Process each TLDR newsletter entry
+            for entry in feed.entries:
+                try:
+                    # Parse the published date
+                    pub_date = None
+                    if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                        pub_date = datetime(*entry.published_parsed[:6])
+                    elif hasattr(entry, 'updated_parsed') and entry.updated_parsed:
+                        pub_date = datetime(*entry.updated_parsed[:6])
+                    
+                    if not pub_date or pub_date < cutoff_date:
+                        continue
+                    
+                    # Get the TLDR newsletter URL
+                    newsletter_url = entry.link if hasattr(entry, 'link') else ''
+                    if not newsletter_url:
+                        continue
+                    
+                    print(f"[Thread {threading.current_thread().name}] Fetching TLDR newsletter page: {newsletter_url}")
+                    
+                    # Fetch the TLDR newsletter page
+                    newsletter_html = self.fetch_content_via_proxy(newsletter_url)
+                    
+                    if not newsletter_html:
+                        print(f"[Thread {threading.current_thread().name}] Proxy failed for TLDR page, trying direct request...")
+                        newsletter_html = self.fetch_content_directly(newsletter_url)
+                    
+                    if not newsletter_html:
+                        print(f"[Thread {threading.current_thread().name}] Failed to fetch TLDR newsletter page")
+                        continue
+                    
+                    # Extract individual articles from the newsletter page
+                    articles = self.extract_tldr_articles_from_page(newsletter_html)
+                    
+                    if articles:
+                        print(f"[Thread {threading.current_thread().name}] Found {len(articles)} articles in TLDR newsletter from {pub_date}")
+                        all_articles.extend(articles)
+                    
+                    # Brief delay between newsletter pages
+                    time.sleep(1)
+                    
+                except Exception as e:
+                    print(f"[Thread {threading.current_thread().name}] Error processing TLDR newsletter entry: {e}")
+                    continue
+            
+            print(f"[Thread {threading.current_thread().name}] Total TLDR articles to process: {len(all_articles)}")
+            
+            if not all_articles:
+                return []
+            
+            # Process articles concurrently using ThreadPoolExecutor
+            processed_articles = []
+            with ThreadPoolExecutor(max_workers=self.max_article_workers) as executor:
+                # Submit all article processing tasks
+                future_to_article = {
+                    executor.submit(self.process_single_tldr_article, source_name, article_info, cutoff_date, existing_urls): article_info 
+                    for article_info in all_articles
+                }
+                
+                # Collect results as they complete
+                for future in as_completed(future_to_article):
+                    article_info = future_to_article[future]
+                    try:
+                        article_data = future.result()
+                        if article_data:  # Only add successful results
+                            processed_articles.append(article_data)
+                            print(f"[Thread {threading.current_thread().name}] TLDR article completed: {article_data['title'][:50]}...")
+                    except Exception as e:
+                        article_title = article_info.get('title', 'Unknown')
+                        print(f"[Thread {threading.current_thread().name}] Exception processing TLDR article '{article_title}': {e}")
+            
+            print(f"[Thread {threading.current_thread().name}] Successfully processed {len(processed_articles)} new TLDR articles")
+            return processed_articles
+            
+        except Exception as e:
+            print(f"[Thread {threading.current_thread().name}] Error parsing TLDR RSS feed {feed_url}: {e}")
+            return []
+    
     def parse_rss_feed(self, source_name, feed_url, days_back=3, existing_urls=None):
         """Parse RSS feed and return articles from the last N days, processing articles concurrently"""
+        # Check if this is a TLDR source
+        if self.is_tldr_source(source_name):
+            return self.parse_tldr_feed(source_name, feed_url, days_back, existing_urls)
+        
         try:
             print(f"[Thread {threading.current_thread().name}] Parsing RSS feed: {feed_url}")
             
@@ -723,30 +964,60 @@ class RSSFeedProcessor:
                 })
                 
                 if not existing:  # Only create if doesn't exist
-                    article_query = """
-                    MATCH (s:Source {name: $source_name})
-                    CREATE (a:Article {
-                        title: $title,
-                        content: $content,
-                        rss_content: $rss_content,
-                        date: $date,
-                        url: $url,
-                        rss_url: $rss_url,
-                        isRelevant: $isRelevant
-                    })
-                    CREATE (s)-[:PUBLISHED]->(a)
-                    RETURN a
-                    """
-                    neo4j_conn.execute_query(article_query, {
-                        "source_name": source_name,
-                        "title": article['title'],
-                        "content": article['content'],  # Now contains cleaned HTML
-                        "rss_content": article['rss_content'],
-                        "date": article['date'],
-                        "url": article['url'],
-                        "rss_url": article['rss_url'],
-                        "isRelevant": article['isRelevant']  # Add relevance property
-                    })
+                    # Check if this is a TLDR article
+                    if article.get('is_tldr_article', False):
+                        article_query = """
+                        MATCH (s:Source {name: $source_name})
+                        CREATE (a:Article {
+                            title: $title,
+                            content: $content,
+                            tldr_summary: $tldr_summary,
+                            date: $date,
+                            url: $url,
+                            rss_url: $rss_url,
+                            isRelevant: $isRelevant,
+                            is_tldr_article: true
+                        })
+                        CREATE (s)-[:PUBLISHED]->(a)
+                        RETURN a
+                        """
+                        neo4j_conn.execute_query(article_query, {
+                            "source_name": source_name,
+                            "title": article['title'],
+                            "content": article['content'],
+                            "tldr_summary": article['tldr_summary'],
+                            "date": article['date'],
+                            "url": article['url'],
+                            "rss_url": article['rss_url'],
+                            "isRelevant": article['isRelevant']
+                        })
+                    else:
+                        article_query = """
+                        MATCH (s:Source {name: $source_name})
+                        CREATE (a:Article {
+                            title: $title,
+                            content: $content,
+                            rss_content: $rss_content,
+                            date: $date,
+                            url: $url,
+                            rss_url: $rss_url,
+                            isRelevant: $isRelevant,
+                            is_tldr_article: false
+                        })
+                        CREATE (s)-[:PUBLISHED]->(a)
+                        RETURN a
+                        """
+                        neo4j_conn.execute_query(article_query, {
+                            "source_name": source_name,
+                            "title": article['title'],
+                            "content": article['content'],
+                            "rss_content": article['rss_content'],
+                            "date": article['date'],
+                            "url": article['url'],
+                            "rss_url": article['rss_url'],
+                            "isRelevant": article['isRelevant']
+                        })
+                    
                     new_articles_count += 1
                 else:
                     print(f"[Thread {threading.current_thread().name}] Article already exists in database (final check): {article['title'][:50]}...")
