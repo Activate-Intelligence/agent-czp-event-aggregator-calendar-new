@@ -121,7 +121,7 @@ def base_agent(payload):
             max_feed_workers=max_feed_workers,
             max_article_workers=max_article_workers
         )
-        result = feed_processor.process_all_feeds(days_back=3)
+        result = feed_processor.process_all_feeds(days_back=1)
         
         if result["success"]:
             call_webhook_with_success(

@@ -47,18 +47,43 @@ class RSSFeedProcessor:
         self._total_articles = 0
         self._processed_sources = 0
         self._total_articles_processed = 0
+        self._skipped_articles = 0
     
-    def increment_counters(self, articles_count=0, sources_count=0, articles_processed=0):
+    def increment_counters(self, articles_count=0, sources_count=0, articles_processed=0, skipped_articles=0):
         """Thread-safe counter increment"""
         with self._lock:
             self._total_articles += articles_count
             self._processed_sources += sources_count
             self._total_articles_processed += articles_processed
+            self._skipped_articles += skipped_articles
     
     def get_counters(self):
         """Thread-safe counter getter"""
         with self._lock:
-            return self._total_articles, self._processed_sources, self._total_articles_processed
+            return self._total_articles, self._processed_sources, self._total_articles_processed, self._skipped_articles
+    
+    def get_existing_article_urls(self, neo4j_conn, source_name):
+        """Get all existing article URLs for a source to avoid reprocessing"""
+        try:
+            query = """
+            MATCH (s:Source {name: $source_name})-[:PUBLISHED]->(a:Article)
+            RETURN a.url as url, a.rss_url as rss_url
+            """
+            results = neo4j_conn.execute_query(query, {"source_name": source_name})
+            
+            existing_urls = set()
+            for result in results:
+                if result['url']:
+                    existing_urls.add(result['url'])
+                if result['rss_url']:
+                    existing_urls.add(result['rss_url'])
+            
+            print(f"[Thread {threading.current_thread().name}] Found {len(existing_urls)} existing article URLs for {source_name}")
+            return existing_urls
+            
+        except Exception as e:
+            print(f"[Thread {threading.current_thread().name}] Error getting existing URLs for {source_name}: {e}")
+            return set()
     
     def get_environment_mode(self):
         """Get the current environment mode (dev or prod)"""
@@ -488,7 +513,7 @@ class RSSFeedProcessor:
                 print(f"[Thread {threading.current_thread().name}] Failed to fetch article content via both proxy and direct request")
                 return None, article_url
     
-    def process_single_article(self, source_name, entry, cutoff_date):
+    def process_single_article(self, source_name, entry, cutoff_date, existing_urls):
         """Process a single article - designed for multithreading"""
         try:
             # Parse the published date
@@ -507,8 +532,20 @@ class RSSFeedProcessor:
             if pub_date < cutoff_date:
                 print(f"[Thread {threading.current_thread().name}] Skipping article - too old ({pub_date})")
                 return None
-                
+            
             # Get basic article info from RSS
+            article_url = entry.link if hasattr(entry, 'link') else ''
+            article_title = entry.title if hasattr(entry, 'title') else ''
+            
+            # EARLY CHECK: Skip if this article URL already exists in database
+            if article_url in existing_urls:
+                print(f"[Thread {threading.current_thread().name}] Skipping article - already exists in database: {article_title[:100]}...")
+                self.increment_counters(skipped_articles=1)
+                return None
+            
+            print(f"[Thread {threading.current_thread().name}] Processing new article: {article_title[:100]}...")
+            
+            # Get RSS content
             rss_content = ""
             if hasattr(entry, 'content') and entry.content:
                 rss_content = entry.content[0].value
@@ -516,11 +553,6 @@ class RSSFeedProcessor:
                 rss_content = entry.summary
             elif hasattr(entry, 'description'):
                 rss_content = entry.description
-            
-            article_url = entry.link if hasattr(entry, 'link') else ''
-            article_title = entry.title if hasattr(entry, 'title') else ''
-            
-            print(f"[Thread {threading.current_thread().name}] Processing article: {article_title[:100]}...")
             
             # Fetch full article content with fallback to direct requests
             full_content = rss_content  # Fallback to RSS content
@@ -530,6 +562,12 @@ class RSSFeedProcessor:
                 article_content, final_article_url = self.fetch_article_content(
                     source_name, article_url, article_title
                 )
+                
+                # ADDITIONAL CHECK: After getting final URL (especially for Techmeme), check if it exists
+                if final_article_url and final_article_url != article_url and final_article_url in existing_urls:
+                    print(f"[Thread {threading.current_thread().name}] Skipping article - final URL already exists in database: {final_article_url}")
+                    self.increment_counters(skipped_articles=1)
+                    return None
                 
                 if article_content and len(article_content.strip()) > len(rss_content.strip()):
                     full_content = article_content
@@ -567,10 +605,14 @@ class RSSFeedProcessor:
             print(f"[Thread {threading.current_thread().name}] Error processing article: {e}")
             return None
     
-    def parse_rss_feed(self, source_name, feed_url, days_back=3):
+    def parse_rss_feed(self, source_name, feed_url, days_back=3, existing_urls=None):
         """Parse RSS feed and return articles from the last N days, processing articles concurrently"""
         try:
             print(f"[Thread {threading.current_thread().name}] Parsing RSS feed: {feed_url}")
+            
+            # Use existing URLs if provided, otherwise get from database
+            if existing_urls is None:
+                existing_urls = set()
             
             # Fetch RSS content directly
             rss_content = self.fetch_rss_feed_directly(feed_url)
@@ -610,7 +652,7 @@ class RSSFeedProcessor:
             with ThreadPoolExecutor(max_workers=self.max_article_workers) as executor:
                 # Submit all article processing tasks
                 future_to_entry = {
-                    executor.submit(self.process_single_article, source_name, entry, cutoff_date): entry 
+                    executor.submit(self.process_single_article, source_name, entry, cutoff_date, existing_urls): entry 
                     for entry in recent_entries
                 }
                 
@@ -626,7 +668,7 @@ class RSSFeedProcessor:
                         entry_title = getattr(entry, 'title', 'Unknown')
                         print(f"[Thread {threading.current_thread().name}] Exception processing article '{entry_title}': {e}")
             
-            print(f"[Thread {threading.current_thread().name}] Successfully processed {len(articles)} articles from {feed_url}")
+            print(f"[Thread {threading.current_thread().name}] Successfully processed {len(articles)} new articles from {feed_url}")
             return articles
             
         except Exception as e:
@@ -667,7 +709,7 @@ class RSSFeedProcessor:
             # Create Article nodes and connect to Source
             new_articles_count = 0
             for article in articles:
-                # Check if article already exists to avoid duplicates (check both URLs)
+                # Final safety check if article already exists (checking both URLs)
                 check_article_query = """
                 MATCH (s:Source {name: $source_name})
                 MATCH (s)-[:PUBLISHED]->(a:Article)
@@ -706,6 +748,8 @@ class RSSFeedProcessor:
                         "isRelevant": article['isRelevant']  # Add relevance property
                     })
                     new_articles_count += 1
+                else:
+                    print(f"[Thread {threading.current_thread().name}] Article already exists in database (final check): {article['title'][:50]}...")
             
             print(f"[Thread {threading.current_thread().name}] Successfully stored {new_articles_count} new articles from {source_name} (total processed: {len(articles)})")
             return new_articles_count
@@ -719,8 +763,11 @@ class RSSFeedProcessor:
         try:
             print(f"[Thread {threading.current_thread().name}] Processing {source_name} from category {category_name} with {self.max_article_workers} article workers")
             
+            # Get existing article URLs for this source to avoid reprocessing
+            existing_urls = self.get_existing_article_urls(neo4j_conn, source_name)
+            
             # Parse RSS feed for articles from last N days (articles processed concurrently)
-            articles = self.parse_rss_feed(source_name, source_url, days_back=days_back)
+            articles = self.parse_rss_feed(source_name, source_url, days_back=days_back, existing_urls=existing_urls)
             
             articles_count = 0
             if articles:
@@ -730,7 +777,7 @@ class RSSFeedProcessor:
                 )
                 print(f"[Thread {threading.current_thread().name}] Successfully processed {source_name}: {articles_count} new articles")
             else:
-                print(f"[Thread {threading.current_thread().name}] No recent articles found for {source_name}")
+                print(f"[Thread {threading.current_thread().name}] No new articles found for {source_name}")
             
             return {
                 'source_name': source_name,
@@ -766,6 +813,7 @@ class RSSFeedProcessor:
             self._total_articles = 0
             self._processed_sources = 0
             self._total_articles_processed = 0
+            self._skipped_articles = 0
             
             # Prepare list of all feeds to process
             feeds_to_process = []
@@ -824,7 +872,7 @@ class RSSFeedProcessor:
                         })
             
             # Get final counters
-            total_articles, processed_sources, total_articles_processed = self.get_counters()
+            total_articles, processed_sources, total_articles_processed, skipped_articles = self.get_counters()
             
             # Calculate success/failure stats
             successful_sources = sum(1 for r in results if r['success'])
@@ -844,8 +892,9 @@ class RSSFeedProcessor:
                 "failed_sources": failed_sources,
                 "total_articles_found": total_articles_found,
                 "total_articles_processed": total_articles_processed,
+                "skipped_articles": skipped_articles,
                 "success": True,
-                "message": f"Successfully processed {total_articles} articles from {processed_sources} sources ({successful_sources} successful, {failed_sources} failed). Found {total_articles_found} total articles, processed {total_articles_processed} individual articles.",
+                "message": f"Successfully processed {total_articles} articles from {processed_sources} sources ({successful_sources} successful, {failed_sources} failed). Found {total_articles_found} total articles, processed {total_articles_processed} individual articles, skipped {skipped_articles} already existing articles.",
                 "detailed_results": results,
                 "performance_stats": {
                     "feed_workers": self.max_feed_workers,
@@ -865,6 +914,7 @@ class RSSFeedProcessor:
                 "failed_sources": 0,
                 "total_articles_found": 0,
                 "total_articles_processed": 0,
+                "skipped_articles": 0,
                 "success": False,
                 "message": f"Error in process_all_feeds: {e}",
                 "detailed_results": [],
