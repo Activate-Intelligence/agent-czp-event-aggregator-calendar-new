@@ -20,7 +20,7 @@ python3 main.py
 uvicorn main:app --reload
 ```
 
-### ECS Deployment
+### ECS Deployment (Current - Production Ready)
 ```bash
 # Build Docker image
 docker build -t agent-is-ai-news-aggregator .
@@ -31,7 +31,19 @@ docker run -p 8000:8000 agent-is-ai-news-aggregator
 # Deploy to ECS (automatic via GitHub Actions)
 git push origin main  # for dev environment
 git push origin prod-release  # for prod environment
+
+# Manual ECS operations
+aws ecs update-service --cluster agent-is-ai-news-aggregator-dev --service agent-is-ai-news-aggregator-dev --force-new-deployment
+
+# Check deployment status
+aws ecs describe-services --cluster agent-is-ai-news-aggregator-dev --services agent-is-ai-news-aggregator-dev
 ```
+
+### Current Deployment Status
+- **Load Balancer URL**: http://ai-news-dev-alb-806072636.eu-west-2.elb.amazonaws.com
+- **API Documentation**: http://ai-news-dev-alb-806072636.eu-west-2.elb.amazonaws.com/docs  
+- **Health Check**: http://ai-news-dev-alb-806072636.eu-west-2.elb.amazonaws.com/status
+- **RSS Processing**: POST to `/execute` endpoint
 
 ### Legacy Lambda Packaging
 ```bash
@@ -44,7 +56,14 @@ python -c "import uvicorn, fastapi; print('✓ FastAPI and Uvicorn ready')"
 
 ## Architecture Overview
 
-This is an AI agent built with the oneForAll blueprint framework with dual deployment support: **ECS for long-running tasks** (current) and AWS Lambda (legacy). The project supports RSS feed processing with multithreading that can run for extended periods.
+This is an AI News Aggregator built with the oneForAll blueprint framework, **successfully deployed on AWS ECS** with unlimited execution time for RSS feed processing. The project uses multithreaded RSS processing to aggregate and filter AI/technology news from multiple sources.
+
+### 🚀 **Current Status: Production Ready on ECS**
+- ✅ **Deployed & Running**: http://ai-news-dev-alb-806072636.eu-west-2.elb.amazonaws.com
+- ✅ **Unlimited Execution Time**: No 15-minute Lambda limitations
+- ✅ **Multithreaded Processing**: 5 feed workers, 3 article workers per feed  
+- ✅ **Auto-scaling**: Fargate containers with load balancer
+- ✅ **High Availability**: Load balancer with health checks
 
 ### Key Components
 
@@ -170,3 +189,28 @@ RSS Processing:
 - Comprehensive error handling and webhook notifications
 - Cleanup handlers ensure graceful shutdown and resource cleanup
 - Container security with non-root user in Dockerfile
+- All secrets managed through AWS SSM Parameter Store with encryption
+
+### Performance & Scalability
+- **Multithreaded Architecture**: 5 concurrent feed workers, 3 article workers per feed
+- **Total Potential Threads**: Up to 15 concurrent article processing threads
+- **Processing Speed**: Significantly faster than sequential processing
+- **Auto-scaling**: ECS Fargate automatically scales based on demand
+- **Resource Efficiency**: Pay only for actual usage with Fargate pricing
+
+### Monitoring & Troubleshooting
+- **CloudWatch Logs**: `/ecs/agent-is-ai-news-aggregator-dev`
+- **Health Checks**: Load balancer monitors container health
+- **DynamoDB Metrics**: Job state tracking and performance monitoring
+- **ECS Service Events**: Deployment and scaling event logs
+
+```bash
+# Monitor logs
+aws logs tail /ecs/agent-is-ai-news-aggregator-dev --follow
+
+# Check service health  
+curl http://ai-news-dev-alb-806072636.eu-west-2.elb.amazonaws.com/status
+
+# View ECS service events
+aws ecs describe-services --cluster agent-is-ai-news-aggregator-dev --services agent-is-ai-news-aggregator-dev --query "services[0].events[0:5]"
+```
