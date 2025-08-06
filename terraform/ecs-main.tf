@@ -202,6 +202,14 @@ resource "aws_lb_target_group" "app" {
     unhealthy_threshold = 2
   }
 
+  # Prevent target group replacement which would break listener dependencies
+  lifecycle {
+    create_before_destroy = true
+    ignore_changes = [
+      name,
+    ]
+  }
+
   tags = {
     Name        = "ai-news-${var.environment}-tg"
     Environment = var.environment
@@ -210,7 +218,7 @@ resource "aws_lb_target_group" "app" {
   }
 }
 
-# HTTPS Listener - ALB forwards HTTPS traffic to HTTPS container
+# HTTPS Listener - ALB forwards HTTPS traffic to container
 resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.main.arn
   port              = "443"
@@ -222,6 +230,8 @@ resource "aws_lb_listener" "https" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.app.arn
   }
+
+  depends_on = [aws_lb_target_group.app]
 }
 
 # HTTP Listener - redirect to HTTPS
@@ -239,6 +249,8 @@ resource "aws_lb_listener" "front_end" {
       status_code = "HTTP_301"
     }
   }
+
+  depends_on = [aws_lb_target_group.app]
 }
 
 # Self-signed certificate for ALB (temporary solution)

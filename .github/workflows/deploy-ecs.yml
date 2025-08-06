@@ -152,20 +152,8 @@ jobs:
         env:
           ENVIRONMENT: ${{ steps.env.outputs.environment }}
         run: |
+          # Apply infrastructure without targets to handle dependencies properly
           terraform -chdir=terraform-ecs apply -auto-approve \
-            -target="aws_ecr_repository.app" \
-            -target="aws_ecs_cluster.main" \
-            -target="aws_lb.main" \
-            -target="aws_lb_target_group.app" \
-            -target="aws_lb_listener.front_end" \
-            -target="aws_security_group.ecs_tasks" \
-            -target="aws_security_group.alb" \
-            -target="aws_iam_role.ecs_task_execution" \
-            -target="aws_iam_role.ecs_task" \
-            -target="aws_iam_role_policy_attachment.ecs_task_execution" \
-            -target="aws_iam_role_policy_attachment.ecs_task_dynamodb_rw" \
-            -target="aws_iam_role_policy_attachment.ecs_task_ssm_read" \
-            -target="aws_cloudwatch_log_group.ecs" \
             -var="environment=$ENVIRONMENT"
             
       - name: Get ECR repository URL
