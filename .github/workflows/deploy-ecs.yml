@@ -130,24 +130,29 @@ jobs:
         with:
           terraform_wrapper: false
           
+      - name: Prepare ECS Terraform
+        run: |
+          # Create separate directory for ECS terraform to avoid conflicts
+          mkdir -p terraform-ecs
+          cp terraform/ecs-main.tf terraform-ecs/main.tf
+          
       - name: Terraform init (ECS)
         env:
           ENVIRONMENT: ${{ steps.env.outputs.environment }}
         run: |
-          # Initialize terraform with ECS backend
-          terraform -chdir=terraform init \
+          # Initialize terraform with ECS backend in separate directory
+          terraform -chdir=terraform-ecs init \
             -backend-config="region=eu-west-2" \
             -backend-config="bucket=533267084389-tf-state" \
             -backend-config="key=aws/$ENVIRONMENT/agents/agent-is-ai-news-aggregator-ecs" \
             -backend-config="dynamodb_table=533267084389-tf-lock" \
-            -backend-config="encrypt=true" \
-            -reconfigure
+            -backend-config="encrypt=true"
             
       - name: Terraform apply (ECS Infrastructure)
         env:
           ENVIRONMENT: ${{ steps.env.outputs.environment }}
         run: |
-          terraform -chdir=terraform apply -auto-approve \
+          terraform -chdir=terraform-ecs apply -auto-approve \
             -target="aws_ecr_repository.app" \
             -target="aws_dynamodb_table.agent_jobs" \
             -target="aws_ecs_cluster.main" \
@@ -164,13 +169,12 @@ jobs:
             -target="aws_iam_role_policy_attachment.ecs_task_dynamodb_rw" \
             -target="aws_iam_role_policy_attachment.ecs_task_ssm_read" \
             -target="aws_cloudwatch_log_group.ecs" \
-            -var="environment=$ENVIRONMENT" \
-            terraform/ecs-main.tf
+            -var="environment=$ENVIRONMENT"
             
       - name: Get ECR repository URL
         id: ecr
         run: |
-          cd terraform
+          cd terraform-ecs
           echo "repository_url=$(terraform output -raw ecr_repository_url)" >> $GITHUB_OUTPUT
           
       - name: Login to Amazon ECR
@@ -202,9 +206,8 @@ jobs:
           echo "Updating ECS task definition with new image..."
           
           # Update task definition with latest image
-          terraform -chdir=terraform apply -auto-approve \
-            -var="environment=$ENVIRONMENT" \
-            terraform/ecs-main.tf
+          terraform -chdir=terraform-ecs apply -auto-approve \
+            -var="environment=$ENVIRONMENT"
             
       - name: Wait for ECS service deployment
         run: |
@@ -219,7 +222,7 @@ jobs:
           
       - name: Show deployment information
         run: |
-          cd terraform
+          cd terraform-ecs
           echo "::notice title=Environment::${{ steps.env.outputs.environment }}"
           echo "::notice title=Load Balancer URL::$(terraform output -raw load_balancer_url)"
           echo "::notice title=ECR Repository::$(terraform output -raw ecr_repository_url)"
