@@ -210,10 +210,37 @@ resource "aws_lb_target_group" "app" {
   }
 }
 
+# HTTP Listener - redirect to HTTPS
 resource "aws_lb_listener" "front_end" {
   load_balancer_arn = aws_lb.main.arn
   port              = "80"
   protocol          = "HTTP"
+
+  default_action {
+    type = "redirect"
+
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+
+# Data source to find existing ACM certificate
+data "aws_acm_certificate" "main" {
+  domain      = "*.activate.bar"
+  statuses    = ["ISSUED"]
+  most_recent = true
+}
+
+# HTTPS Listener
+resource "aws_lb_listener" "https" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = "443"
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = data.aws_acm_certificate.main.arn
 
   default_action {
     type             = "forward"
@@ -496,8 +523,13 @@ resource "aws_ecs_service" "app" {
 #               Outputs                #
 ########################################
 output "load_balancer_url" {
+  value       = "https://${aws_lb.main.dns_name}"
+  description = "Load balancer URL (HTTPS)"
+}
+
+output "load_balancer_http_url" {
   value       = "http://${aws_lb.main.dns_name}"
-  description = "Load balancer URL"
+  description = "Load balancer URL (HTTP - redirects to HTTPS)"
 }
 
 output "ecr_repository_url" {
