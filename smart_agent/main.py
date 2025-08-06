@@ -67,7 +67,7 @@ if origins and origins.strip() and origins != '*':
     print(f"CORS configured with allowed origins: {allowed_origins}")
 else:
     # Fallback to localhost only for development - more secure default
-    allowed_origins = ["http://localhost:3000", "http://localhost:9000"]
+    allowed_origins = ["http://localhost:3000", "http://localhost:9000", "https://spritz.activate.bar", "https://app.dev.spritz.activate.bar", "https://api.dev.spritz.activate.bar","https://api.spritz.activate.bar"]
     print(f"CORS using development defaults: {allowed_origins}")
 
 # App middleware
