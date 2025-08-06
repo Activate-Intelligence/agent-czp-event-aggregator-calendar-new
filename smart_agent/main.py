@@ -9,6 +9,8 @@ from .src.utils.cleanup import setup_cleanup_handlers
 
 # Check if running in ECS and load parameters
 is_ecs = os.environ.get('ECS_CONTAINER_METADATA_URI_V4') is not None
+print(f"Environment check - ECS: {is_ecs}, LOCAL_RUN: {os.environ.get('LOCAL_RUN')}")
+
 if is_ecs and not os.environ.get("LOCAL_RUN"):
     print("ECS environment detected - loading SSM parameters...")
     try:
@@ -16,12 +18,16 @@ if is_ecs and not os.environ.get("LOCAL_RUN"):
         import sys
         sys.path.insert(0, '/app')
         from lambda_handler import load_parameter_store_config
+        print("About to call load_parameter_store_config...")
         if load_parameter_store_config():
             print("Successfully loaded SSM parameters in ECS environment")
+            print(f"ALLOW_ORIGINS after loading: {os.environ.get('ALLOW_ORIGINS', 'NOT_SET')}")
         else:
             print("Failed to load SSM parameters, falling back to .env")
     except Exception as e:
         print(f"Error loading SSM parameters: {e}")
+else:
+    print("Skipping parameter loading - either not ECS or LOCAL_RUN is set")
 
 # Add dot env (fallback for local development)
 load_dotenv()
