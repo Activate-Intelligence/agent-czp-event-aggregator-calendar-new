@@ -130,9 +130,17 @@ def validate_required_config():
     
     return True
 
-# Load configuration
+# Load configuration for both Lambda and ECS environments
 if not os.environ.get("LOCAL_RUN"):
-    print("Starting Lambda handler configuration...")
+    print("Starting configuration loading...")
+    
+    # Check if running in ECS (has ECS metadata endpoint) or Lambda
+    is_ecs = os.environ.get('ECS_CONTAINER_METADATA_URI_V4') is not None
+    
+    if is_ecs:
+        print("Detected ECS environment")
+    else:
+        print("Detected Lambda environment")
 
     if not load_parameter_store_config():
         raise RuntimeError('Failed to load configuration from Parameter Store or .env file')
@@ -155,6 +163,9 @@ if not os.environ.get("LOCAL_RUN"):
             print(f"Relative import also failed: {e2}")
             raise RuntimeError(f"Failed to import FastAPI app: {e}, {e2}")
 
-    # Create the Mangum handler
-    handler = Mangum(app, lifespan='off')
-    print("Lambda handler ready")
+    # Create the Mangum handler only for Lambda
+    if not is_ecs:
+        handler = Mangum(app, lifespan='off')
+        print("Lambda handler ready")
+    else:
+        print("ECS environment - FastAPI app ready for direct use")

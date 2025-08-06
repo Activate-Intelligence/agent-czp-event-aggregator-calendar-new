@@ -1,0 +1,230 @@
+name: Deploy agent-is-ai-news-aggregator ECS
+
+on:
+  push:
+    branches: [main, 'prod**']
+  pull_request:
+    branches: ['prod**']
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      TF_VAR_service_name: agent-is-ai-news-aggregator
+      TF_VAR_aws_region: eu-west-2
+      
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Determine Environment
+        id: env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=dev" >> $GITHUB_OUTPUT
+            echo "Environment: dev (main branch)"
+          elif [[ "${{ github.ref }}" == refs/heads/prod* ]]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+            echo "Environment: prod (production branch)"
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+            echo "Environment: dev (default)"
+          fi
+          
+      - name: AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          role-to-assume: arn:aws:iam::533267084389:role/github
+          aws-region: eu-west-2
+          
+      - name: Upload all secrets to SSM
+        env:
+          SECRETS_JSON: ${{ toJson(secrets) }}
+          ENVIRONMENT: ${{ steps.env.outputs.environment }}
+        run: |
+          echo "Uploading all repository secrets to SSM Parameter Store..."
+          
+          # Function to create or update SSM parameter
+          create_or_update_parameter() {
+            local param_name="$1"
+            local param_value="$2"
+            local param_type="$3"
+            
+            echo "Processing parameter: $param_name"
+            
+            # First, try to create the parameter with tags (new parameter)
+            if aws ssm put-parameter \
+              --name "$param_name" \
+              --value "$param_value" \
+              --type "$param_type" \
+              --tags Key=Name,Value="agent-is-ai-news-aggregator-$(basename $param_name)" Key=Environment,Value=$ENVIRONMENT Key=ManagedBy,Value=GitHubActions \
+              --no-overwrite \
+              2>/dev/null; then
+              echo "✓ Created new parameter: $param_name"
+            else
+              # Parameter exists, update it (without tags)
+              if aws ssm put-parameter \
+                --name "$param_name" \
+                --value "$param_value" \
+                --type "$param_type" \
+                --overwrite; then
+                echo "✓ Updated existing parameter: $param_name"
+                
+                # Try to add/update tags separately (ignore errors if tags already exist)
+                aws ssm add-tags-to-resource \
+                  --resource-type "Parameter" \
+                  --resource-id "$param_name" \
+                  --tags Key=Name,Value="agent-is-ai-news-aggregator-$(basename $param_name)" Key=Environment,Value=$ENVIRONMENT Key=ManagedBy,Value=GitHubActions \
+                  2>/dev/null || echo "Note: Could not update tags for $param_name (may already exist)"
+              else
+                echo "❌ Failed to create/update parameter: $param_name"
+                return 1
+              fi
+            fi
+          }
+          
+          # Parse secrets and upload each one
+          echo "$SECRETS_JSON" | jq -r 'to_entries[] | select(.key != "GITHUB_TOKEN") | @base64' | while read -r entry; do
+            # Decode the entry
+            decoded=$(echo $entry | base64 --decode)
+            
+            # Extract key and value
+            key=$(echo $decoded | jq -r '.key')
+            value=$(echo $decoded | jq -r '.value')
+            
+            # Skip empty values
+            if [ -n "$value" ] && [ "$value" != "null" ]; then
+              # Determine parameter type based on key name
+              if [[ $key == *"API_KEY"* ]] || [[ $key == *"TOKEN"* ]] || [[ $key == *"SECRET"* ]] || [[ $key == *"PASSWORD"* ]]; then
+                param_type="SecureString"
+              else
+                param_type="String"
+              fi
+              
+              # Create full parameter name with environment
+              param_name="/app/agent-is-ai-news-aggregator/$ENVIRONMENT/$key"
+              
+              # Create or update the parameter
+              create_or_update_parameter "$param_name" "$value" "$param_type"
+            else
+              echo "⚠ Skipping empty secret: $key"
+            fi
+          done
+          
+          echo "✓ All secrets processed for SSM Parameter Store"
+          
+      - name: Verify SSM parameters
+        run: |
+          ENVIRONMENT=${{ steps.env.outputs.environment }}
+          echo "Verifying uploaded parameters..."
+          aws ssm describe-parameters \
+            --parameter-filters Key=Name,Values="/app/agent-is-ai-news-aggregator/$ENVIRONMENT/" \
+            --query 'Parameters[].{Name:Name,Type:Type,LastModifiedDate:LastModifiedDate}' \
+            --output table
+            
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_wrapper: false
+          
+      - name: Terraform init (ECS)
+        env:
+          ENVIRONMENT: ${{ steps.env.outputs.environment }}
+        run: |
+          # Initialize terraform with ECS backend
+          terraform -chdir=terraform init \
+            -backend-config="region=eu-west-2" \
+            -backend-config="bucket=533267084389-tf-state" \
+            -backend-config="key=aws/$ENVIRONMENT/agents/agent-is-ai-news-aggregator-ecs" \
+            -backend-config="dynamodb_table=533267084389-tf-lock" \
+            -backend-config="encrypt=true" \
+            -reconfigure
+            
+      - name: Terraform apply (ECS Infrastructure)
+        env:
+          ENVIRONMENT: ${{ steps.env.outputs.environment }}
+        run: |
+          terraform -chdir=terraform apply -auto-approve \
+            -target="aws_ecr_repository.app" \
+            -target="aws_dynamodb_table.agent_jobs" \
+            -target="aws_ecs_cluster.main" \
+            -target="aws_lb.main" \
+            -target="aws_lb_target_group.app" \
+            -target="aws_lb_listener.front_end" \
+            -target="aws_security_group.ecs_tasks" \
+            -target="aws_security_group.alb" \
+            -target="aws_iam_role.ecs_task_execution" \
+            -target="aws_iam_role.ecs_task" \
+            -target="aws_iam_policy.dynamodb_rw" \
+            -target="aws_iam_policy.ssm_parameter_read" \
+            -target="aws_iam_role_policy_attachment.ecs_task_execution" \
+            -target="aws_iam_role_policy_attachment.ecs_task_dynamodb_rw" \
+            -target="aws_iam_role_policy_attachment.ecs_task_ssm_read" \
+            -target="aws_cloudwatch_log_group.ecs" \
+            -var="environment=$ENVIRONMENT" \
+            terraform/ecs-main.tf
+            
+      - name: Get ECR repository URL
+        id: ecr
+        run: |
+          cd terraform
+          echo "repository_url=$(terraform output -raw ecr_repository_url)" >> $GITHUB_OUTPUT
+          
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+        
+      - name: Build and push Docker image
+        env:
+          ECR_REPOSITORY: ${{ steps.ecr.outputs.repository_url }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          echo "Building Docker image..."
+          docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REPOSITORY:$IMAGE_TAG $ECR_REPOSITORY:latest
+          
+          echo "Pushing image to ECR..."
+          docker push $ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REPOSITORY:latest
+          
+          echo "Image pushed successfully!"
+          echo "repository_url=$ECR_REPOSITORY" >> $GITHUB_OUTPUT
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+          
+      - name: Update ECS task definition and deploy service
+        env:
+          ENVIRONMENT: ${{ steps.env.outputs.environment }}
+          ECR_REPOSITORY: ${{ steps.ecr.outputs.repository_url }}
+        run: |
+          echo "Updating ECS task definition with new image..."
+          
+          # Update task definition with latest image
+          terraform -chdir=terraform apply -auto-approve \
+            -var="environment=$ENVIRONMENT" \
+            terraform/ecs-main.tf
+            
+      - name: Wait for ECS service deployment
+        run: |
+          ENVIRONMENT=${{ steps.env.outputs.environment }}
+          CLUSTER_NAME="agent-is-ai-news-aggregator-$ENVIRONMENT"
+          SERVICE_NAME="agent-is-ai-news-aggregator-$ENVIRONMENT"
+          
+          echo "Waiting for ECS service deployment to complete..."
+          aws ecs wait services-stable --cluster $CLUSTER_NAME --services $SERVICE_NAME
+          
+          echo "ECS service deployment completed successfully!"
+          
+      - name: Show deployment information
+        run: |
+          cd terraform
+          echo "::notice title=Environment::${{ steps.env.outputs.environment }}"
+          echo "::notice title=Load Balancer URL::$(terraform output -raw load_balancer_url)"
+          echo "::notice title=ECR Repository::$(terraform output -raw ecr_repository_url)"
+          echo "::notice title=ECS Cluster::$(terraform output -raw ecs_cluster_name)"
+          echo "::notice title=ECS Service::$(terraform output -raw ecs_service_name)"
+          echo "::notice title=DynamoDB Table::$(terraform output -raw dynamodb_table_name)"
+          echo "::notice title=CloudWatch Logs::$(terraform output -raw cloudwatch_log_group)"
+          echo "::notice title=SSM Parameters::$(aws ssm describe-parameters --parameter-filters Key=Name,Values=/app/agent-is-ai-news-aggregator/${{ steps.env.outputs.environment }}/ --query 'Parameters[].Name' --output table)"

@@ -20,9 +20,22 @@ python3 main.py
 uvicorn main:app --reload
 ```
 
-### Testing and Packaging
+### ECS Deployment
 ```bash
-# Package for Lambda deployment
+# Build Docker image
+docker build -t agent-is-ai-news-aggregator .
+
+# Run locally with Docker
+docker run -p 8000:8000 agent-is-ai-news-aggregator
+
+# Deploy to ECS (automatic via GitHub Actions)
+git push origin main  # for dev environment
+git push origin prod-release  # for prod environment
+```
+
+### Legacy Lambda Packaging
+```bash
+# Package for Lambda deployment (legacy)
 python scripts/package-lambda.py
 
 # Verify installation
@@ -31,7 +44,7 @@ python -c "import uvicorn, fastapi; print('✓ FastAPI and Uvicorn ready')"
 
 ## Architecture Overview
 
-This is an AI agent built with the oneForAll blueprint framework for AWS Lambda deployment. The project follows a specific structure for S3-based deployment with agent-specific DynamoDB tables.
+This is an AI agent built with the oneForAll blueprint framework with dual deployment support: **ECS for long-running tasks** (current) and AWS Lambda (legacy). The project supports RSS feed processing with multithreading that can run for extended periods.
 
 ### Key Components
 
@@ -41,37 +54,54 @@ This is an AI agent built with the oneForAll blueprint framework for AWS Lambda 
 - Includes routers for: discover, execute, abort, status, logs
 - Sets up cleanup handlers for graceful shutdown
 
-**Lambda Handler (`lambda_handler.py` and `smart_agent/lambda_handler.py`)**
-- Root level handler imports from smart_agent module
+**Configuration Handler (`smart_agent/lambda_handler.py`)**
+- Detects ECS vs Lambda environment automatically
 - Loads configuration from AWS Parameter Store or .env fallback
-- Uses Mangum to wrap FastAPI app for Lambda execution
+- Uses Mangum wrapper only for Lambda; direct FastAPI for ECS
 - Handles environment variable setup and validation
 
 **Agent Core (`smart_agent/src/agent/base_agent.py`)**
-- Main agent processing logic with environment mode switching (dev/prod)
-- Integrates with OpenAI API for LLM functionality
-- Supports prompt extraction from YAML files
-- Implements webhook notifications for status updates
-- Uses temporary storage in dev mode, static prompts in prod
+- AI News Aggregator with RSS feed processing
+- Integrates with OpenAI API for content filtering and analysis
+- Multithreaded RSS processing with configurable worker pools
+- Neo4j database integration for article storage
+- Webhook notifications for status updates
+- Environment mode switching (dev/prod) for prompt handling
+
+**RSS Feed Processor (`smart_agent/src/agent/rss_feed_processor.py`)**
+- Multithreaded RSS feed scraping and article processing
+- Support for multiple news sources (TechCrunch, BBC, The Verge, etc.)
+- Content extraction with fallback strategies
+- Article relevance filtering using OpenAI
+- Neo4j storage with duplicate detection
 
 **Configuration System**
 - Agent configuration in `smart_agent/src/config/agent.json`
-- Environment variables loaded from Parameter Store (Lambda) or .env (local)
-- Support for multiple agent types (general, gimlet, mojito, daiquiri)
+- Environment variables loaded from Parameter Store (AWS) or .env (local)
+- Support for different agent types and configurations
 
 **API Routes (`smart_agent/src/routes/`)**
 - `/discover` - Agent capability discovery
-- `/execute` - Main agent execution endpoint
+- `/execute` - Main agent execution endpoint (RSS processing)
 - `/abort` - Job termination
 - `/status` - Job status checking
 - `/logs` - Log file access
 
 ### Deployment Architecture
 
-**S3 Deployment Strategy**
-- Latest-only package storage in `533267084389-lambda-artifacts`
+**ECS Deployment (Current)**
+- AWS Fargate containers for scalable, long-running tasks
+- Application Load Balancer with health checks
+- Auto-scaling based on demand
+- CloudWatch logging and monitoring
+- ECR for container image storage
+- Supports unlimited execution time for RSS processing
+
+**Legacy Lambda Deployment**
+- 15-minute execution limit (insufficient for full RSS processing)
+- S3-based package storage in `533267084389-lambda-artifacts`
 - Automatic cleanup of old deployment packages
-- Environment-specific paths: `{agent-name}/dev/` and `{agent-name}/prod/`
+- Kept for backward compatibility
 
 **DynamoDB Integration**
 - Agent-specific tables: `{agent-name}-{environment}-jobs`
@@ -87,12 +117,14 @@ This is an AI agent built with the oneForAll blueprint framework for AWS Lambda 
 ### Key Files
 
 - `smart_agent/main.py` - FastAPI application entry point
-- `lambda_handler.py` - AWS Lambda handler (root level)
-- `smart_agent/lambda_handler.py` - Configuration loader and app wrapper
-- `smart_agent/src/agent/base_agent.py` - Core agent logic
-- `scripts/package-lambda.py` - Lambda packaging script
-- `terraform/main.tf` - Infrastructure as Code
-- `.github/workflows/deploy.yml` - CI/CD pipeline
+- `Dockerfile` - Container configuration for ECS deployment
+- `smart_agent/lambda_handler.py` - Configuration loader with ECS/Lambda detection
+- `smart_agent/src/agent/base_agent.py` - Core agent logic with RSS processing
+- `smart_agent/src/agent/rss_feed_processor.py` - Multithreaded RSS processor
+- `terraform/ecs-main.tf` - ECS Infrastructure as Code
+- `terraform/main.tf` - Legacy Lambda Infrastructure (deprecated)
+- `.github/workflows/deploy-ecs.yml` - ECS CI/CD pipeline
+- `.github/workflows/deploy.yml` - Legacy Lambda CI/CD pipeline
 
 ### Environment Variables
 
@@ -104,15 +136,37 @@ Required for local development:
 - `AGENT_NAME` - Agent identifier
 - `AGENT_TYPE` - Agent configuration type
 
-Lambda-specific:
+ECS/Lambda-specific:
 - `JOB_TABLE` - DynamoDB table name (set by Terraform)
 - `PARAMETER_PREFIX` - SSM parameter path prefix
 - `ENVIRONMENT` - Deployment environment (dev/prod)
+- `ECS_CONTAINER_METADATA_URI_V4` - ECS detection (automatic)
+
+RSS Processing:
+- Neo4j connection credentials (hardcoded in base_agent.py - should be moved to environment variables)
+- Multithreading configuration for feed and article workers
 
 ## Development Notes
 
-- The agent uses environment mode switching for different behaviors in dev vs prod
+### ECS vs Lambda Detection
+- The application automatically detects if it's running in ECS or Lambda
+- ECS provides unlimited execution time, suitable for RSS processing workloads
+- Lambda is limited to 15 minutes, kept for backward compatibility
+
+### RSS Feed Processing
+- Multithreaded architecture with configurable worker pools
+- Feed-level parallelism (5 workers) and article-level parallelism (3 workers per feed)
+- Built-in duplicate detection and content relevance filtering
+- Supports both standard RSS feeds and specialized sources like TLDR
+
+### Configuration Management
+- Environment mode switching for different behaviors in dev vs prod  
 - Prompt files are downloaded dynamically in dev mode, static in prod mode
-- All configuration is centralized through Parameter Store in Lambda
-- The project includes comprehensive error handling and webhook notifications
+- All configuration is centralized through Parameter Store in AWS environments
+- Local development uses .env files as fallback
+
+### Security and Best Practices
+- Neo4j credentials should be moved from hardcoded values to environment variables
+- Comprehensive error handling and webhook notifications
 - Cleanup handlers ensure graceful shutdown and resource cleanup
+- Container security with non-root user in Dockerfile
