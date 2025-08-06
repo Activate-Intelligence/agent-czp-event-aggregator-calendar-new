@@ -29,10 +29,8 @@ load_dotenv()
 # Create App
 app = FastAPI()
 
-ALLOW_ORIGINS="http://localhost:9000,http://localhost:3000,https://api.dev.spritz.cafe,https://api.spritz.cafe,https://app.dev.spritz.cafe,https://app.spritz.cafe,https://api.dev.spritz.activate.bar,https://api.spritz.activate.bar,https://app.dev.spritz.activate.bar,https://spritz.activate.bar"
-
 # Add CORS
-origins = ALLOW_ORIGINS
+origins = os.environ.get('ALLOW_ORIGINS')
 
 # Configure allowed origins - never default to allowing all origins
 if origins and origins.strip() and origins != '*':
