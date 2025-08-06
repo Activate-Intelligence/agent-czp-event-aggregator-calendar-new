@@ -46,9 +46,9 @@ variable "environment" {
 }
 
 variable "container_port" {
-  description = "Container port"
+  description = "Container port for HTTPS"
   type        = number
-  default     = 8000
+  default     = 8443
 }
 
 variable "task_cpu" {
@@ -197,7 +197,7 @@ resource "aws_lb_target_group" "app" {
     matcher             = "200"
     path                = "/status"
     port                = "traffic-port"
-    protocol            = "HTTP"
+    protocol            = "HTTPS"
     timeout             = 5
     unhealthy_threshold = 2
   }
@@ -207,6 +207,20 @@ resource "aws_lb_target_group" "app" {
     Environment = var.environment
     ManagedBy   = "Terraform"
     ServiceName = var.service_name
+  }
+}
+
+# HTTPS Listener - ALB forwards HTTPS traffic to HTTPS container
+resource "aws_lb_listener" "https" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = "443"
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = aws_acm_certificate.self_signed.arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app.arn
   }
 }
 
@@ -227,25 +241,38 @@ resource "aws_lb_listener" "front_end" {
   }
 }
 
-# Data source to find existing ACM certificate
-data "aws_acm_certificate" "main" {
-  domain      = "*.activate.bar"
-  statuses    = ["ISSUED"]
-  most_recent = true
+# Self-signed certificate for ALB (temporary solution)
+resource "aws_acm_certificate" "self_signed" {
+  private_key      = tls_private_key.main.private_key_pem
+  certificate_body = tls_self_signed_cert.main.cert_pem
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
-# HTTPS Listener
-resource "aws_lb_listener" "https" {
-  load_balancer_arn = aws_lb.main.arn
-  port              = "443"
-  protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = data.aws_acm_certificate.main.arn
+# Private key for self-signed certificate
+resource "tls_private_key" "main" {
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
 
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.app.arn
+# Self-signed certificate
+resource "tls_self_signed_cert" "main" {
+  private_key_pem = tls_private_key.main.private_key_pem
+
+  subject {
+    common_name  = aws_lb.main.dns_name
+    organization = "AI News Aggregator"
   }
+
+  validity_period_hours = 8760 # 1 year
+
+  allowed_uses = [
+    "key_encipherment",
+    "digital_signature",
+    "server_auth",
+  ]
 }
 
 ########################################
@@ -453,6 +480,14 @@ resource "aws_ecs_task_definition" "app" {
         {
           name  = "AWS_REGION"
           value = var.aws_region
+        },
+        {
+          name  = "USE_SSL"
+          value = "true"
+        },
+        {
+          name  = "APP_PORT"
+          value = "8443"
         }
       ]
 
@@ -466,7 +501,7 @@ resource "aws_ecs_task_definition" "app" {
       }
 
       healthCheck = {
-        command     = ["CMD-SHELL", "curl -f http://localhost:${var.container_port}/status || exit 1"]
+        command     = ["CMD-SHELL", "curl -k -f https://localhost:${var.container_port}/status || exit 1"]
         interval    = 30
         timeout     = 5
         retries     = 3

@@ -62,11 +62,24 @@ app.include_router(logs.router)
 host = os.environ.get('APP_HOST', default='0.0.0.0')
 port = os.environ.get('APP_PORT', default='8000')
 isReload = os.environ.get('IS_RELOAD', default=True)
+use_ssl = os.environ.get('USE_SSL', default='false').lower() == 'true'
 
 # Run App
 if __name__ == "__main__":
     setup_cleanup_handlers()
     try:
-        uvicorn.run("main:app", host=host, port=int(port), reload=bool(isReload))
+        if use_ssl:
+            # Run with SSL certificate
+            uvicorn.run(
+                "main:app", 
+                host=host, 
+                port=int(port), 
+                reload=bool(isReload),
+                ssl_keyfile="/app/ssl/server.key",
+                ssl_certfile="/app/ssl/server.crt"
+            )
+        else:
+            # Run without SSL (default)
+            uvicorn.run("main:app", host=host, port=int(port), reload=bool(isReload))
     except KeyboardInterrupt:
         print("Server interrupted. Cleanup complete.")
