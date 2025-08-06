@@ -20,8 +20,12 @@ NEO4J_URL = "neo4j+s://ff9f9095.databases.neo4j.io"
 NEO4J_USER = "neo4j"
 NEO4J_PASSWORD = "BTpQLS4NHJ3aBpYS-7ec4hl1P9cE93L8QQa7H-enE0k"
 
-openai_api_key = os.environ.get("OPENAI_API_KEY")
-client = OpenAI(api_key=openai_api_key)
+def get_openai_client():
+    """Get OpenAI client with lazy initialization"""
+    openai_api_key = os.environ.get("OPENAI_API_KEY")
+    if not openai_api_key:
+        raise ValueError("OPENAI_API_KEY environment variable is not set")
+    return OpenAI(api_key=openai_api_key)
 
 def get_environment_mode():
     """Get the current environment mode (dev or prod)"""
@@ -52,6 +56,7 @@ def llm(context, inquiry):
     print("---"*30)
     
     try:
+        client = get_openai_client()
         response = client.chat.completions.create(
             model=model_params['name'],
             messages=[
