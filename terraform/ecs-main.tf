@@ -184,7 +184,7 @@ resource "aws_lb" "main" {
 }
 
 resource "aws_lb_target_group" "app" {
-  name        = "ai-news-${var.environment}-http-tg"
+  name        = "ai-news-${var.environment}-tg"
   port        = var.container_port
   protocol    = "HTTP"
   vpc_id      = data.aws_vpc.default.id
@@ -202,86 +202,24 @@ resource "aws_lb_target_group" "app" {
     unhealthy_threshold = 2
   }
 
-  # Prevent target group replacement which would break listener dependencies
-  lifecycle {
-    create_before_destroy = true
-  }
-
   tags = {
-    Name        = "ai-news-${var.environment}-http-tg"
+    Name        = "ai-news-${var.environment}-tg"
     Environment = var.environment
     ManagedBy   = "Terraform"
     ServiceName = var.service_name
   }
 }
 
-# HTTPS Listener - ALB forwards HTTPS traffic to container
-resource "aws_lb_listener" "https" {
-  load_balancer_arn = aws_lb.main.arn
-  port              = "443"
-  protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = aws_acm_certificate.self_signed.arn
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.app.arn
-  }
-
-  depends_on = [aws_lb_target_group.app]
-}
-
-# HTTP Listener - redirect to HTTPS
+# HTTP Listener - Simple forwarding (just like revision 6)
 resource "aws_lb_listener" "front_end" {
   load_balancer_arn = aws_lb.main.arn
   port              = "80"
   protocol          = "HTTP"
 
   default_action {
-    type = "redirect"
-
-    redirect {
-      port        = "443"
-      protocol    = "HTTPS"
-      status_code = "HTTP_301"
-    }
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app.arn
   }
-
-  depends_on = [aws_lb_target_group.app]
-}
-
-# Self-signed certificate for ALB (temporary solution)
-resource "aws_acm_certificate" "self_signed" {
-  private_key      = tls_private_key.main.private_key_pem
-  certificate_body = tls_self_signed_cert.main.cert_pem
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-# Private key for self-signed certificate
-resource "tls_private_key" "main" {
-  algorithm = "RSA"
-  rsa_bits  = 2048
-}
-
-# Self-signed certificate
-resource "tls_self_signed_cert" "main" {
-  private_key_pem = tls_private_key.main.private_key_pem
-
-  subject {
-    common_name  = aws_lb.main.dns_name
-    organization = "AI News Aggregator"
-  }
-
-  validity_period_hours = 8760 # 1 year
-
-  allowed_uses = [
-    "key_encipherment",
-    "digital_signature",
-    "server_auth",
-  ]
 }
 
 ########################################
@@ -489,14 +427,6 @@ resource "aws_ecs_task_definition" "app" {
         {
           name  = "AWS_REGION"
           value = var.aws_region
-        },
-        {
-          name  = "USE_SSL"
-          value = "false"
-        },
-        {
-          name  = "APP_PORT"
-          value = "8000"
         }
       ]
 
