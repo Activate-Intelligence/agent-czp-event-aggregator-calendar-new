@@ -7,8 +7,9 @@ def load_parameter_store_config():
     try:
         import boto3
         aws_region = os.environ.get('AWS_REGION', 'eu-west-2')
-        agent_name = os.environ.setdefault('AGENT_NAME', 'smart_agent')
-        parameter_prefix = os.environ.get('PARAMETER_PREFIX', f'/app/{agent_name}')
+        agent_name = os.environ.get('AGENT_NAME', 'agent-is-ai-news-aggregator')
+        environment = os.environ.get('ENVIRONMENT', 'dev')
+        parameter_prefix = os.environ.get('PARAMETER_PREFIX', f'/app/{agent_name}/{environment}')
         parameter_prefix = os.path.expandvars(parameter_prefix)
         
         print(f"Loading parameters from: {parameter_prefix}")
