@@ -246,7 +246,7 @@ resource "aws_lb_target_group" "app" {
 }
 
 # HTTP Listener - Redirect to HTTPS
-resource "aws_lb_listener" "front_end_http" {
+resource "aws_lb_listener" "front_end" {
   load_balancer_arn = aws_lb.main.arn
   port              = "80"
   protocol          = "HTTP"
@@ -538,7 +538,7 @@ resource "aws_ecs_service" "app" {
     rollback = true
   }
 
-  depends_on = [aws_lb_listener.front_end_https, aws_iam_role_policy_attachment.ecs_task_execution]
+  depends_on = [aws_lb_listener.front_end, aws_lb_listener.front_end_https, aws_iam_role_policy_attachment.ecs_task_execution]
 
   tags = {
     Name        = "${var.service_name}-${var.environment}"
