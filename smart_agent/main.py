@@ -30,12 +30,22 @@ load_dotenv()
 app = FastAPI()
 
 # Add CORS
-origins = os.environ.get('ALLOW_ORIGINS', '*')
+origins = os.environ.get('ALLOW_ORIGINS')
+
+# Configure allowed origins - never default to allowing all origins
+if origins and origins.strip() and origins != '*':
+    # Use the configured origins from environment/SSM
+    allowed_origins = [origin.strip() for origin in origins.split(",") if origin.strip()]
+    print(f"CORS configured with allowed origins: {allowed_origins}")
+else:
+    # Fallback to localhost only for development - more secure default
+    allowed_origins = ["http://localhost:3000", "http://localhost:9000"]
+    print(f"CORS using development defaults: {allowed_origins}")
 
 # App middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins.split(",") if origins and origins != '*' else ["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
