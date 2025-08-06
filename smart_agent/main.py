@@ -12,7 +12,10 @@ is_ecs = os.environ.get('ECS_CONTAINER_METADATA_URI_V4') is not None
 if is_ecs and not os.environ.get("LOCAL_RUN"):
     print("ECS environment detected - loading SSM parameters...")
     try:
-        from .lambda_handler import load_parameter_store_config
+        # Import from root level lambda_handler.py (copied to /app in Dockerfile)
+        import sys
+        sys.path.insert(0, '/app')
+        from lambda_handler import load_parameter_store_config
         if load_parameter_store_config():
             print("Successfully loaded SSM parameters in ECS environment")
         else:
