@@ -38,12 +38,12 @@ EXPOSE 8443
 # Set environment variables for ECS
 ENV LOCAL_RUN=false
 ENV PYTHONPATH=/app
-ENV USE_SSL=true
-ENV APP_PORT=8443
+ENV USE_SSL=false
+ENV APP_PORT=8000
 
-# Health check for HTTPS
+# Health check for HTTP (ALB will handle HTTPS termination)
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -k -f https://localhost:8443/status || curl -f http://localhost:8000/status || exit 1
+    CMD curl -f http://localhost:8000/status || exit 1
 
 # Start the FastAPI application with SSL support
 CMD ["python", "smart_agent/main.py"]

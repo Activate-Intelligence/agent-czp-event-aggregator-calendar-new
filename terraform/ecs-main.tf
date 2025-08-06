@@ -46,9 +46,9 @@ variable "environment" {
 }
 
 variable "container_port" {
-  description = "Container port for HTTPS"
+  description = "Container port (HTTP - ALB handles HTTPS termination)"
   type        = number
-  default     = 8443
+  default     = 8000
 }
 
 variable "task_cpu" {
@@ -197,7 +197,7 @@ resource "aws_lb_target_group" "app" {
     matcher             = "200"
     path                = "/status"
     port                = "traffic-port"
-    protocol            = "HTTPS"
+    protocol            = "HTTP"
     timeout             = 5
     unhealthy_threshold = 2
   }
@@ -483,11 +483,11 @@ resource "aws_ecs_task_definition" "app" {
         },
         {
           name  = "USE_SSL"
-          value = "true"
+          value = "false"
         },
         {
           name  = "APP_PORT"
-          value = "8443"
+          value = "8000"
         }
       ]
 
@@ -501,7 +501,7 @@ resource "aws_ecs_task_definition" "app" {
       }
 
       healthCheck = {
-        command     = ["CMD-SHELL", "curl -k -f https://localhost:${var.container_port}/status || exit 1"]
+        command     = ["CMD-SHELL", "curl -f http://localhost:${var.container_port}/status || exit 1"]
         interval    = 30
         timeout     = 5
         retries     = 3
