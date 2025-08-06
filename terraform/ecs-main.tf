@@ -120,7 +120,7 @@ data "aws_subnets" "default" {
 
 # Security group for ECS tasks
 resource "aws_security_group" "ecs_tasks" {
-  name        = "${var.service_name}-${var.environment}-ecs-tasks"
+  name        = "ai-news-${var.environment}-ecs"
   description = "Security group for ECS tasks"
   vpc_id      = data.aws_vpc.default.id
 
@@ -139,15 +139,16 @@ resource "aws_security_group" "ecs_tasks" {
   }
 
   tags = {
-    Name        = "${var.service_name}-${var.environment}-ecs-tasks"
+    Name        = "ai-news-${var.environment}-ecs"
     Environment = var.environment
     ManagedBy   = "Terraform"
+    ServiceName = var.service_name
   }
 }
 
 # Security group for ALB
 resource "aws_security_group" "alb" {
-  name        = "${var.service_name}-${var.environment}-alb"
+  name        = "ai-news-${var.environment}-alb-sg"
   description = "Security group for Application Load Balancer"
   vpc_id      = data.aws_vpc.default.id
 
@@ -173,9 +174,10 @@ resource "aws_security_group" "alb" {
   }
 
   tags = {
-    Name        = "${var.service_name}-${var.environment}-alb"
+    Name        = "ai-news-${var.environment}-alb-sg"
     Environment = var.environment
     ManagedBy   = "Terraform"
+    ServiceName = var.service_name
   }
 }
 
@@ -183,7 +185,7 @@ resource "aws_security_group" "alb" {
 #         Application Load Balancer    #
 ########################################
 resource "aws_lb" "main" {
-  name               = "${var.service_name}-${var.environment}-alb"
+  name               = "ai-news-${var.environment}-alb"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
@@ -192,14 +194,15 @@ resource "aws_lb" "main" {
   enable_deletion_protection = false
 
   tags = {
-    Name        = "${var.service_name}-${var.environment}-alb"
+    Name        = "ai-news-${var.environment}-alb"
     Environment = var.environment
     ManagedBy   = "Terraform"
+    ServiceName = var.service_name
   }
 }
 
 resource "aws_lb_target_group" "app" {
-  name        = "${var.service_name}-${var.environment}-tg"
+  name        = "ai-news-${var.environment}-tg"
   port        = var.container_port
   protocol    = "HTTP"
   vpc_id      = data.aws_vpc.default.id
@@ -218,9 +221,10 @@ resource "aws_lb_target_group" "app" {
   }
 
   tags = {
-    Name        = "${var.service_name}-${var.environment}-tg"
+    Name        = "ai-news-${var.environment}-tg"
     Environment = var.environment
     ManagedBy   = "Terraform"
+    ServiceName = var.service_name
   }
 }
 
