@@ -154,7 +154,6 @@ jobs:
         run: |
           terraform -chdir=terraform-ecs apply -auto-approve \
             -target="aws_ecr_repository.app" \
-            -target="aws_dynamodb_table.agent_jobs" \
             -target="aws_ecs_cluster.main" \
             -target="aws_lb.main" \
             -target="aws_lb_target_group.app" \

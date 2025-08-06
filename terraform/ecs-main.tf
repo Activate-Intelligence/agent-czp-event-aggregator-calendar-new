@@ -72,34 +72,10 @@ variable "desired_count" {
 ########################################
 #        Agent-Specific DynamoDB Table #
 ########################################
-resource "aws_dynamodb_table" "agent_jobs" {
-  name           = "${var.service_name}-${var.environment}-jobs"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "id"
 
-  attribute {
-    name = "id"
-    type = "S"
-  }
-
-  attribute {
-    name = "status"
-    type = "S"
-  }
-
-  # Global Secondary Index for status queries
-  global_secondary_index {
-    name            = "status-index"
-    hash_key        = "status"
-    projection_type = "ALL"
-  }
-
-  tags = {
-    Name        = "${var.service_name}-${var.environment}-jobs"
-    Environment = var.environment
-    ManagedBy   = "Terraform"
-    ServiceName = var.service_name
-  }
+# Reference existing DynamoDB table (created by Lambda deployment)
+data "aws_dynamodb_table" "agent_jobs" {
+  name = "${var.service_name}-${var.environment}-jobs"
 }
 
 ########################################
@@ -384,8 +360,8 @@ resource "aws_iam_policy" "dynamodb_rw" {
         "dynamodb:DescribeTable"
       ],
       Resource = [
-        aws_dynamodb_table.agent_jobs.arn,
-        "${aws_dynamodb_table.agent_jobs.arn}/index/*"
+        data.aws_dynamodb_table.agent_jobs.arn,
+        "${data.aws_dynamodb_table.agent_jobs.arn}/index/*"
       ]
     }]
   })
@@ -478,7 +454,7 @@ resource "aws_ecs_task_definition" "app" {
       environment = [
         {
           name  = "JOB_TABLE"
-          value = aws_dynamodb_table.agent_jobs.name
+          value = data.aws_dynamodb_table.agent_jobs.name
         },
         {
           name  = "PARAMETER_PREFIX"
@@ -572,12 +548,12 @@ output "ecs_service_name" {
 }
 
 output "dynamodb_table_name" {
-  value       = aws_dynamodb_table.agent_jobs.name
+  value       = data.aws_dynamodb_table.agent_jobs.name
   description = "DynamoDB table name for agent jobs"
 }
 
 output "dynamodb_table_arn" {
-  value       = aws_dynamodb_table.agent_jobs.arn
+  value       = data.aws_dynamodb_table.agent_jobs.arn
   description = "DynamoDB table ARN for agent jobs"
 }
 
@@ -606,11 +582,11 @@ output "ssm_parameter_info" {
 
 output "dynamodb_info" {
   value = {
-    table_name   = aws_dynamodb_table.agent_jobs.name
-    table_arn    = aws_dynamodb_table.agent_jobs.arn
-    billing_mode = "PAY_PER_REQUEST"
-    hash_key     = "id"
+    table_name   = data.aws_dynamodb_table.agent_jobs.name
+    table_arn    = data.aws_dynamodb_table.agent_jobs.arn
+    billing_mode = data.aws_dynamodb_table.agent_jobs.billing_mode
+    hash_key     = data.aws_dynamodb_table.agent_jobs.hash_key
     gsi_name     = "status-index"
-    description  = "Agent-specific DynamoDB table for job state management"
+    description  = "Existing DynamoDB table from Lambda deployment (shared)"
   }
 }
