@@ -199,12 +199,14 @@ jobs:
         env:
           ENVIRONMENT: ${{ steps.env.outputs.environment }}
           ECR_REPOSITORY: ${{ steps.ecr.outputs.repository_url }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          echo "Updating ECS task definition with new image..."
+          echo "Updating ECS task definition with new image tag: $IMAGE_TAG"
           
-          # Update task definition with latest image
+          # Update task definition with specific image tag to force new revision
           terraform -chdir=terraform-ecs apply -auto-approve \
-            -var="environment=$ENVIRONMENT"
+            -var="environment=$ENVIRONMENT" \
+            -var="image_tag=$IMAGE_TAG"
             
       - name: Wait for ECS service deployment
         run: |

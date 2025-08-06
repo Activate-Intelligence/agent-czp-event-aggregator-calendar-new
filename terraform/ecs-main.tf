@@ -69,6 +69,12 @@ variable "desired_count" {
   default     = 1
 }
 
+variable "image_tag" {
+  description = "Docker image tag to deploy"
+  type        = string
+  default     = "latest"
+}
+
 ########################################
 #        Agent-Specific DynamoDB Table #
 ########################################
@@ -392,7 +398,7 @@ resource "aws_ecs_task_definition" "app" {
   container_definitions = jsonencode([
     {
       name  = "${var.service_name}-${var.environment}"
-      image = "${aws_ecr_repository.app.repository_url}:latest"
+      image = "${aws_ecr_repository.app.repository_url}:${var.image_tag}"
       
       essential = true
       
