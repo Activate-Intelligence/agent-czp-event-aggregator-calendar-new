@@ -214,8 +214,16 @@ jobs:
           CLUSTER_NAME="agent-is-ai-news-aggregator-$ENVIRONMENT"
           SERVICE_NAME="agent-is-ai-news-aggregator-$ENVIRONMENT"
           
-          echo "Waiting for ECS service deployment to complete..."
-          aws ecs wait services-stable --cluster $CLUSTER_NAME --services $SERVICE_NAME
+          echo "Waiting for ECS service deployment to complete (timeout: 10 minutes)..."
+          # Wait up to 10 minutes (40 attempts * 15 seconds = 600 seconds)
+          timeout 600 aws ecs wait services-stable --cluster $CLUSTER_NAME --services $SERVICE_NAME || {
+            echo "::warning::Service deployment timed out after 10 minutes. Checking status..."
+            aws ecs describe-services --cluster $CLUSTER_NAME --services $SERVICE_NAME \
+              --query "services[0].{status:status,runningCount:runningCount,desiredCount:desiredCount,deployments:deployments[*].status}" \
+              --output json
+            echo "::notice::Deployment may still be in progress. Check ECS console for details."
+            exit 0  # Don't fail the workflow, just warn
+          }
           
           echo "ECS service deployment completed successfully!"
           

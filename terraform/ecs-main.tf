@@ -474,6 +474,15 @@ resource "aws_ecs_service" "app" {
     container_port   = var.container_port
   }
 
+  # Give container 60 seconds to start before health checks begin
+  health_check_grace_period_seconds = 60
+
+  # Enable deployment circuit breaker to automatically rollback failed deployments
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
   depends_on = [aws_lb_listener.front_end, aws_iam_role_policy_attachment.ecs_task_execution]
 
   tags = {
