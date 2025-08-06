@@ -14,12 +14,12 @@ load_dotenv()
 app = FastAPI()
 
 # Add CORS
-origins = os.environ.get('ALLOW_ORIGINS')
+origins = os.environ.get('ALLOW_ORIGINS', '*')
 
 # App middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins.split(","),
+    allow_origins=origins.split(",") if origins and origins != '*' else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
