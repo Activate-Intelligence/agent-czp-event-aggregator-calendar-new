@@ -162,8 +162,6 @@ jobs:
             -target="aws_security_group.alb" \
             -target="aws_iam_role.ecs_task_execution" \
             -target="aws_iam_role.ecs_task" \
-            -target="aws_iam_policy.dynamodb_rw" \
-            -target="aws_iam_policy.ssm_parameter_read" \
             -target="aws_iam_role_policy_attachment.ecs_task_execution" \
             -target="aws_iam_role_policy_attachment.ecs_task_dynamodb_rw" \
             -target="aws_iam_role_policy_attachment.ecs_task_ssm_read" \
