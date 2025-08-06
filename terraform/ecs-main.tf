@@ -75,6 +75,18 @@ variable "image_tag" {
   default     = "latest"
 }
 
+variable "domain_name" {
+  description = "Custom domain name for the ALB (optional)"
+  type        = string
+  default     = "ai-news-dev.activate.bar"
+}
+
+variable "certificate_arn" {
+  description = "ACM certificate ARN for HTTPS"
+  type        = string
+  default     = "arn:aws:acm:eu-west-2:533267084389:certificate/8a60fd71-f5a5-4b7a-a0ef-9b36a9c35e93"
+}
+
 ########################################
 #        Agent-Specific DynamoDB Table #
 ########################################
@@ -164,6 +176,29 @@ resource "aws_security_group" "alb" {
 }
 
 ########################################
+#              Route 53                #
+########################################
+# Get the hosted zone for activate.bar
+data "aws_route53_zone" "main" {
+  name         = "activate.bar"
+  private_zone = false
+}
+
+# Create A record pointing to ALB
+resource "aws_route53_record" "main" {
+  count   = var.domain_name != "" ? 1 : 0
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = var.domain_name
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.main.dns_name
+    zone_id                = aws_lb.main.zone_id
+    evaluate_target_health = true
+  }
+}
+
+########################################
 #         Application Load Balancer    #
 ########################################
 resource "aws_lb" "main" {
@@ -210,11 +245,30 @@ resource "aws_lb_target_group" "app" {
   }
 }
 
-# HTTP Listener - Simple forwarding (just like revision 6)
-resource "aws_lb_listener" "front_end" {
+# HTTP Listener - Redirect to HTTPS
+resource "aws_lb_listener" "front_end_http" {
   load_balancer_arn = aws_lb.main.arn
   port              = "80"
   protocol          = "HTTP"
+
+  default_action {
+    type = "redirect"
+
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+
+# HTTPS Listener - Forward to target group
+resource "aws_lb_listener" "front_end_https" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = "443"
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"
+  certificate_arn   = var.certificate_arn
 
   default_action {
     type             = "forward"
@@ -484,7 +538,7 @@ resource "aws_ecs_service" "app" {
     rollback = true
   }
 
-  depends_on = [aws_lb_listener.front_end, aws_iam_role_policy_attachment.ecs_task_execution]
+  depends_on = [aws_lb_listener.front_end_https, aws_iam_role_policy_attachment.ecs_task_execution]
 
   tags = {
     Name        = "${var.service_name}-${var.environment}"
@@ -497,13 +551,23 @@ resource "aws_ecs_service" "app" {
 #               Outputs                #
 ########################################
 output "load_balancer_url" {
-  value       = "https://${aws_lb.main.dns_name}"
+  value       = var.domain_name != "" ? "https://${var.domain_name}" : "https://${aws_lb.main.dns_name}"
   description = "Load balancer URL (HTTPS)"
 }
 
 output "load_balancer_http_url" {
-  value       = "http://${aws_lb.main.dns_name}"
+  value       = var.domain_name != "" ? "http://${var.domain_name}" : "http://${aws_lb.main.dns_name}"
   description = "Load balancer URL (HTTP - redirects to HTTPS)"
+}
+
+output "alb_dns_name" {
+  value       = aws_lb.main.dns_name
+  description = "Raw ALB DNS name"
+}
+
+output "domain_name" {
+  value       = var.domain_name
+  description = "Custom domain name"
 }
 
 output "ecr_repository_url" {
