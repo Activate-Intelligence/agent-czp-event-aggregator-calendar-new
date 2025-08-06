@@ -1,10 +1,21 @@
-name: Deploy agent-is-ai-news-aggregator Lambda
+name: Deploy agent-is-ai-news-aggregator Lambda (LEGACY)
 
 on:
-  push:
-    branches: [main, 'prod**']
-  pull_request:
-    branches: ['prod**']
+  # Disabled automatic triggers - use manual dispatch only
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+  # push:
+  #   branches: [main, 'prod**']
+  # pull_request:
+  #   branches: ['prod**']
 
 permissions:
   id-token: write
@@ -24,16 +35,10 @@ jobs:
       - name: Determine Environment
         id: env
         run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "environment=dev" >> $GITHUB_OUTPUT
-            echo "Environment: dev (main branch)"
-          elif [[ "${{ github.ref }}" == refs/heads/prod* ]]; then
-            echo "environment=prod" >> $GITHUB_OUTPUT
-            echo "Environment: prod (production branch)"
-          else
-            echo "environment=dev" >> $GITHUB_OUTPUT
-            echo "Environment: dev (default)"
-          fi
+          # Use manual input for environment
+          ENVIRONMENT="${{ github.event.inputs.environment || 'dev' }}"
+          echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
+          echo "Environment: $ENVIRONMENT (manual dispatch)"
           
       - name: Set up Python
         uses: actions/setup-python@v4
