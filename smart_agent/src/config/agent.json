@@ -12,7 +12,7 @@
   "outputs": [
     {
       "label": "output",
-      "type": "shortText"
+      "type": "longText"
     }
   ]
 }

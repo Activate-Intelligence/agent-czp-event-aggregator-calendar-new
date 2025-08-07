@@ -156,7 +156,7 @@ def base_agent(payload):
             },
         })
 
-        resp = {"name": "output", "type": "shortText", "data": msg}
+        resp = {"name": "output", "type": "longText", "data": msg}
         return resp
 
     except Exception as e:

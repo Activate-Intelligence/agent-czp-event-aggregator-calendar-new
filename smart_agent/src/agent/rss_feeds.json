@@ -35,6 +35,10 @@
         {
           "name": "TLDR AI",
           "url": "https://tldr.tech/api/rss/ai"
+        },
+        {
+          "name": "The Rundown AI",
+          "url": "https://rss.beehiiv.com/feeds/2R3C6Bt5wj.xml"
         }
       ]
     },
