@@ -209,6 +209,9 @@ resource "aws_lb" "main" {
   subnets           = data.aws_subnets.default.ids
 
   enable_deletion_protection = false
+  
+  # Increase idle timeout for long-running RSS processing
+  idle_timeout = 3600  # 1 hour (default is 60 seconds)
 
   tags = {
     Name        = "ai-news-${var.environment}-alb"
@@ -224,17 +227,27 @@ resource "aws_lb_target_group" "app" {
   protocol    = "HTTP"
   vpc_id      = data.aws_vpc.default.id
   target_type = "ip"
+  
+  # Increase deregistration delay for long-running requests
+  deregistration_delay = 3600  # 1 hour (default is 300 seconds)
 
   health_check {
     enabled             = true
     healthy_threshold   = 2
-    interval            = 30
+    interval            = 60      # Increased from 30 for long-running tasks
     matcher             = "200"
     path                = "/status"
     port                = "traffic-port"
     protocol            = "HTTP"
-    timeout             = 5
-    unhealthy_threshold = 2
+    timeout             = 10      # Increased from 5
+    unhealthy_threshold = 3       # Increased from 2 for more tolerance
+  }
+  
+  # Enable stickiness for long-running requests
+  stickiness {
+    enabled         = true
+    type            = "lb_cookie"
+    cookie_duration = 86400  # 24 hours
   }
 
   tags = {
