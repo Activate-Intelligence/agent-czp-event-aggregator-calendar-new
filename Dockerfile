@@ -29,7 +29,6 @@ USER appuser
 EXPOSE 8000
 
 # Set environment variables for ECS
-ENV LOCAL_RUN=false
 ENV PYTHONPATH=/app
 
 # Health check
