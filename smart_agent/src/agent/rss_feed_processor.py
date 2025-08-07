@@ -89,20 +89,25 @@ class RSSFeedProcessor:
         """Get the current environment mode (dev or prod)"""
         return os.environ.get("ENVIRONMENT_MODE", "dev").lower()
 
-    def get_prompt_file_path(self):
-        """Get the appropriate prompt file path based on environment mode"""
+    def get_prompt_file_path(self, prompt_type='source_filtering'):
+        """Get the appropriate prompt file path based on environment mode and prompt type"""
         mode = self.get_environment_mode()
+        
+        if prompt_type == 'fact_extraction':
+            prompt_filename = 'fact_extraction.yaml'
+        else:
+            prompt_filename = 'source_filtering_prompt.yaml'
         
         if mode == "dev":
             # In dev mode, try /tmp/Prompt first, fallback to Prompt
-            tmp_prompt_path = '/tmp/Prompt/source_filtering_prompt.yaml'
+            tmp_prompt_path = f'/tmp/Prompt/{prompt_filename}'
             if os.path.exists(tmp_prompt_path):
                 return tmp_prompt_path
             else:
-                return 'Prompt/source_filtering_prompt.yaml'
+                return f'Prompt/{prompt_filename}'
         else:
             # In prod mode, only use Prompt folder
-            return 'Prompt/source_filtering_prompt.yaml'
+            return f'Prompt/{prompt_filename}'
 
     def filter_article_relevance(self, article_title, article_content):
         """Use LLM to determine if article is relevant to AI"""
@@ -110,7 +115,7 @@ class RSSFeedProcessor:
             # Combine title and content for analysis
             article_text = f"Title: {article_title}\n\nContent: {article_content}"
             
-            prompt_file_path = self.get_prompt_file_path()
+            prompt_file_path = self.get_prompt_file_path('source_filtering')
             replacements = {"articles": article_text}
             system_prompt, user_prompt, model_params = extract_prompts(prompt_file_path, **replacements)
             
@@ -144,6 +149,54 @@ class RSSFeedProcessor:
             print(f"[Thread {threading.current_thread().name}] Error filtering article relevance: {e}")
             # Default to True to avoid losing potentially relevant articles
             return True
+
+    def extract_facts_from_article(self, article_title, article_content):
+        """Use LLM to extract structured facts from article content"""
+        try:
+            prompt_file_path = self.get_prompt_file_path('fact_extraction')
+            replacements = {"title": article_title, "content": article_content}
+            system_prompt, user_prompt, model_params = extract_prompts(prompt_file_path, **replacements)
+            
+            print(f"[Thread {threading.current_thread().name}] Extracting facts from: {article_title[:100]}...")
+            
+            response = self.openai_client.chat.completions.create(
+                model=model_params['name'],
+                messages=[
+                    {
+                        "role": "system",
+                        "content": system_prompt
+                    },
+                    {
+                        "role": "user",
+                        "content": user_prompt  
+                    },
+                ],
+                temperature=model_params.get('temperature', 0.1),
+                max_tokens=model_params.get('max_tokens', 2000),
+                top_p=model_params.get('top_p', 0.9),
+                response_format={"type": "json_object"}
+            )
+
+            # Extract and parse the response
+            result = response.choices[0].message.content.strip()
+            fact_data = json.loads(result)
+            
+            print(f"[Thread {threading.current_thread().name}] Successfully extracted facts from article")
+            return fact_data
+            
+        except Exception as e:
+            print(f"[Thread {threading.current_thread().name}] Error extracting facts from article: {e}")
+            # Return empty structure on error
+            return {
+                "key_facts": [],
+                "key_people": [],
+                "key_companies": [],
+                "key_technologies": [],
+                "key_dates_numbers": [],
+                "main_claims": [],
+                "evidence_sources": [],
+                "geographic_locations": []
+            }
 
     def load_rss_feeds(self, config_file='rss_feeds.json'):
         """Load RSS feeds configuration from rss_feeds.json"""
@@ -976,7 +1029,8 @@ class RSSFeedProcessor:
                             url: $url,
                             rss_url: $rss_url,
                             isRelevant: $isRelevant,
-                            is_tldr_article: true
+                            is_tldr_article: true,
+                            fact_summary: ""
                         })
                         CREATE (s)-[:PUBLISHED]->(a)
                         RETURN a
@@ -1002,7 +1056,8 @@ class RSSFeedProcessor:
                             url: $url,
                             rss_url: $rss_url,
                             isRelevant: $isRelevant,
-                            is_tldr_article: false
+                            is_tldr_article: false,
+                            fact_summary: ""
                         })
                         CREATE (s)-[:PUBLISHED]->(a)
                         RETURN a
@@ -1156,6 +1211,13 @@ class RSSFeedProcessor:
                     if not result['success']:
                         print(f"Failed: {result['source_name']} - {result['error']}")
             
+            # After RSS processing is complete, run fact extraction on relevant articles
+            print("\n" + "="*50)
+            print("RSS PROCESSING COMPLETED - STARTING FACT EXTRACTION")
+            print("="*50)
+            
+            fact_extraction_result = self.run_fact_extraction_on_relevant_articles(days_back=days_back)
+            
             result = {
                 "total_articles": total_articles,
                 "processed_sources": processed_sources,
@@ -1165,8 +1227,9 @@ class RSSFeedProcessor:
                 "total_articles_processed": total_articles_processed,
                 "skipped_articles": skipped_articles,
                 "success": True,
-                "message": f"Successfully processed {total_articles} articles from {processed_sources} sources ({successful_sources} successful, {failed_sources} failed). Found {total_articles_found} total articles, processed {total_articles_processed} individual articles, skipped {skipped_articles} already existing articles.",
+                "message": f"Successfully processed {total_articles} articles from {processed_sources} sources ({successful_sources} successful, {failed_sources} failed). Found {total_articles_found} total articles, processed {total_articles_processed} individual articles, skipped {skipped_articles} already existing articles. Fact extraction: {fact_extraction_result.get('articles_with_facts', 0)} articles now have fact summaries.",
                 "detailed_results": results,
+                "fact_extraction_result": fact_extraction_result,
                 "performance_stats": {
                     "feed_workers": self.max_feed_workers,
                     "article_workers_per_feed": self.max_article_workers,
@@ -1200,6 +1263,135 @@ class RSSFeedProcessor:
             
         finally:
             neo4j_conn.close()
+
+    def run_fact_extraction_on_relevant_articles(self, days_back=3):
+        """Run fact extraction on all relevant articles that don't have fact summaries yet"""
+        neo4j_conn = Neo4jConnection(self.neo4j_url, self.neo4j_user, self.neo4j_password)
+        
+        try:
+            print("Starting fact extraction process on relevant articles...")
+            
+            # Get all relevant articles from the last N days that don't have fact summaries
+            cutoff_date = datetime.now() - timedelta(days=days_back)
+            
+            query = """
+            MATCH (a:Article)
+            WHERE a.isRelevant = true 
+            AND datetime(a.date) >= datetime($cutoff_date)
+            AND (a.fact_summary IS NULL OR a.fact_summary = "")
+            RETURN a.title as title, a.content as content, a.url as url, a.date as date
+            ORDER BY a.date DESC
+            """
+            
+            articles = neo4j_conn.execute_query(query, {
+                "cutoff_date": cutoff_date.isoformat()
+            })
+            
+            if not articles:
+                print("No relevant articles found that need fact extraction")
+                return {
+                    "success": True,
+                    "message": "No articles found that need fact extraction",
+                    "articles_processed": 0,
+                    "articles_with_facts": 0
+                }
+            
+            print(f"Found {len(articles)} relevant articles to process for fact extraction")
+            
+            articles_processed = 0
+            articles_with_facts = 0
+            
+            # Process articles for fact extraction
+            with ThreadPoolExecutor(max_workers=self.max_article_workers) as executor:
+                # Submit all fact extraction tasks
+                future_to_article = {
+                    executor.submit(self.process_single_article_for_facts, article, neo4j_conn): article 
+                    for article in articles
+                }
+                
+                # Collect results as they complete
+                for future in as_completed(future_to_article):
+                    article = future_to_article[future]
+                    try:
+                        result = future.result()
+                        articles_processed += 1
+                        
+                        if result and result.get('success'):
+                            articles_with_facts += 1
+                            print(f"Completed fact extraction for: {article['title'][:50]}...")
+                        else:
+                            print(f"Failed fact extraction for: {article['title'][:50]}...")
+                            
+                    except Exception as e:
+                        articles_processed += 1
+                        print(f"Exception during fact extraction for '{article['title'][:50]}...': {e}")
+            
+            result = {
+                "success": True,
+                "message": f"Completed fact extraction on {articles_processed} articles. {articles_with_facts} articles now have fact summaries.",
+                "articles_processed": articles_processed,
+                "articles_with_facts": articles_with_facts
+            }
+            
+            print(result["message"])
+            return result
+            
+        except Exception as e:
+            error_result = {
+                "success": False,
+                "message": f"Error in fact extraction process: {e}",
+                "articles_processed": 0,
+                "articles_with_facts": 0
+            }
+            print(error_result["message"])
+            return error_result
+            
+        finally:
+            neo4j_conn.close()
+
+    def process_single_article_for_facts(self, article, neo4j_conn):
+        """Process a single article for fact extraction"""
+        try:
+            title = article['title']
+            content = article['content']
+            url = article['url']
+            
+            # Skip if content is too short or empty
+            if not content or len(content.strip()) < 100:
+                print(f"[Thread {threading.current_thread().name}] Skipping fact extraction - content too short: {title[:50]}...")
+                return {"success": False, "reason": "content_too_short"}
+            
+            # Extract facts from the article
+            fact_summary = self.extract_facts_from_article(title, content)
+            
+            # Brief delay after LLM call
+            time.sleep(0.3)
+            
+            # Convert fact summary to JSON string for storage
+            fact_summary_json = json.dumps(fact_summary)
+            
+            # Update the article with fact summary
+            update_query = """
+            MATCH (a:Article {url: $url})
+            SET a.fact_summary = $fact_summary
+            RETURN a
+            """
+            
+            result = neo4j_conn.execute_query(update_query, {
+                "url": url,
+                "fact_summary": fact_summary_json
+            })
+            
+            if result:
+                print(f"[Thread {threading.current_thread().name}] Successfully updated article with fact summary: {title[:50]}...")
+                return {"success": True, "fact_summary": fact_summary}
+            else:
+                print(f"[Thread {threading.current_thread().name}] Failed to update article with fact summary: {title[:50]}...")
+                return {"success": False, "reason": "update_failed"}
+                
+        except Exception as e:
+            print(f"[Thread {threading.current_thread().name}] Error processing article for facts: {e}")
+            return {"success": False, "reason": str(e)}
 
 def create_feed_processor(neo4j_url, neo4j_user, neo4j_password, max_feed_workers=5, max_article_workers=3):
     """Factory function to create RSS Feed Processor with configurable thread counts"""
