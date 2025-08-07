@@ -171,10 +171,8 @@ class RSSFeedProcessor:
                         "content": user_prompt  
                     },
                 ],
-                temperature=model_params.get('temperature', 0.1),
-                max_tokens=model_params.get('max_tokens', 2000),
-                top_p=model_params.get('top_p', 0.9),
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
+                reasoning_effort="medium"
             )
 
             # Extract and parse the response
