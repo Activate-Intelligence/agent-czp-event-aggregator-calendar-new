@@ -1391,6 +1391,131 @@ class RSSFeedProcessor:
             print(f"[Thread {threading.current_thread().name}] Error processing article for facts: {e}")
             return {"success": False, "reason": str(e)}
 
+    def generate_comprehensive_summaries_for_all_relevant_articles(self):
+        """Generate fact summaries for ALL relevant articles without fact summaries (no date limit)"""
+        neo4j_conn = Neo4jConnection(self.neo4j_url, self.neo4j_user, self.neo4j_password)
+        
+        try:
+            print("Starting comprehensive fact extraction process on ALL relevant articles...")
+            
+            # Get ALL relevant articles that don't have fact summaries (no date limit)
+            query = """
+            MATCH (c:Category)-[:HAS_SOURCE]->(s:Source)-[:PUBLISHED]->(a:Article)
+            WHERE a.isRelevant = true 
+            AND (a.fact_summary IS NULL OR a.fact_summary = "")
+            RETURN a.title as title, a.content as content, a.url as url, a.date as date,
+                   s.name as source_name, c.name as category_name
+            ORDER BY a.date DESC
+            """
+            
+            articles = neo4j_conn.execute_query(query)
+            
+            if not articles:
+                print("No relevant articles found that need fact extraction")
+                return {
+                    "success": True,
+                    "message": "No articles found that need fact extraction",
+                    "articles_processed": 0,
+                    "articles_with_facts": 0,
+                    "by_category": {},
+                    "by_source": {}
+                }
+            
+            print(f"Found {len(articles)} relevant articles across all time periods to process for fact extraction")
+            
+            # Group articles by category and source for reporting
+            by_category = {}
+            by_source = {}
+            
+            for article in articles:
+                category = article['category_name']
+                source = article['source_name']
+                
+                if category not in by_category:
+                    by_category[category] = 0
+                by_category[category] += 1
+                
+                if source not in by_source:
+                    by_source[source] = 0
+                by_source[source] += 1
+            
+            print(f"Articles by category: {by_category}")
+            print(f"Articles by source: {by_source}")
+            
+            articles_processed = 0
+            articles_with_facts = 0
+            
+            # Process articles for fact extraction with higher concurrency for this bulk operation
+            bulk_workers = min(self.max_article_workers * 2, 10)  # Increase workers for bulk processing
+            print(f"Using {bulk_workers} workers for bulk fact extraction processing")
+            
+            with ThreadPoolExecutor(max_workers=bulk_workers) as executor:
+                # Submit all fact extraction tasks
+                future_to_article = {
+                    executor.submit(self.process_single_article_for_facts, article, neo4j_conn): article 
+                    for article in articles
+                }
+                
+                # Collect results as they complete with progress reporting
+                completed = 0
+                for future in as_completed(future_to_article):
+                    article = future_to_article[future]
+                    completed += 1
+                    
+                    try:
+                        result = future.result()
+                        articles_processed += 1
+                        
+                        if result and result.get('success'):
+                            articles_with_facts += 1
+                            print(f"[{completed}/{len(articles)}] Completed fact extraction for: {article['title'][:50]}...")
+                        else:
+                            print(f"[{completed}/{len(articles)}] Failed fact extraction for: {article['title'][:50]}...")
+                        
+                        # Progress update every 10 articles
+                        if completed % 10 == 0:
+                            print(f"Progress: {completed}/{len(articles)} articles processed ({articles_with_facts} successful)")
+                            
+                    except Exception as e:
+                        articles_processed += 1
+                        print(f"[{completed}/{len(articles)}] Exception during fact extraction for '{article['title'][:50]}...': {e}")
+            
+            result = {
+                "success": True,
+                "message": f"Completed comprehensive fact extraction on {articles_processed} articles across all time periods. {articles_with_facts} articles now have fact summaries.",
+                "articles_processed": articles_processed,
+                "articles_with_facts": articles_with_facts,
+                "by_category": by_category,
+                "by_source": by_source,
+                "processing_stats": {
+                    "total_found": len(articles),
+                    "success_rate": f"{(articles_with_facts/articles_processed*100):.1f}%" if articles_processed > 0 else "0%",
+                    "workers_used": bulk_workers
+                }
+            }
+            
+            print(result["message"])
+            print(f"Success rate: {result['processing_stats']['success_rate']}")
+            print(f"Categories processed: {list(by_category.keys())}")
+            print(f"Sources processed: {list(by_source.keys())}")
+            
+            return result
+            
+        except Exception as e:
+            error_result = {
+                "success": False,
+                "message": f"Error in comprehensive fact extraction process: {e}",
+                "articles_processed": 0,
+                "articles_with_facts": 0,
+                "by_category": {},
+                "by_source": {}
+            }
+            print(error_result["message"])
+            return error_result
+            
+        finally:
+            neo4j_conn.close()
+
 def create_feed_processor(neo4j_url, neo4j_user, neo4j_password, max_feed_workers=5, max_article_workers=3):
     """Factory function to create RSS Feed Processor with configurable thread counts"""
     return RSSFeedProcessor(neo4j_url, neo4j_user, neo4j_password, max_feed_workers=max_feed_workers, max_article_workers=max_article_workers)
