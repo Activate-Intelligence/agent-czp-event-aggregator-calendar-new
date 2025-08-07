@@ -78,7 +78,7 @@ variable "image_tag" {
 variable "domain_name" {
   description = "Custom domain name for the ALB (optional)"
   type        = string
-  default     = "ai-news-dev.activate.bar"
+  default     = "isp-ai-news-agg-dev.activate.bar"
 }
 
 variable "certificate_arn" {

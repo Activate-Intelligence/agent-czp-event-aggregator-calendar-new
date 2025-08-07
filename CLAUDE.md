@@ -40,9 +40,9 @@ aws ecs describe-services --cluster agent-is-ai-news-aggregator-dev --services a
 ```
 
 ### Current Deployment Status
-- **Load Balancer URL**: https://ai-news-dev.activate.bar
-- **API Documentation**: https://ai-news-dev.activate.bar/docs  
-- **Health Check**: https://ai-news-dev.activate.bar/status
+- **Load Balancer URL**: https://isp-ai-news-agg-dev.activate.bar
+- **API Documentation**: https://isp-ai-news-agg-dev.activate.bar/docs  
+- **Health Check**: https://isp-ai-news-agg-dev.activate.bar/status
 - **RSS Processing**: POST to `/execute` endpoint
 
 ### Legacy Lambda Packaging
@@ -59,7 +59,7 @@ python -c "import uvicorn, fastapi; print('✓ FastAPI and Uvicorn ready')"
 This is an AI News Aggregator built with the oneForAll blueprint framework, **successfully deployed on AWS ECS** with unlimited execution time for RSS feed processing. The project uses multithreaded RSS processing to aggregate and filter AI/technology news from multiple sources.
 
 ### 🚀 **Current Status: Production Ready on ECS**
-- ✅ **Deployed & Running**: https://ai-news-dev.activate.bar
+- ✅ **Deployed & Running**: https://isp-ai-news-agg-dev.activate.bar
 - ✅ **Unlimited Execution Time**: No 15-minute Lambda limitations
 - ✅ **Multithreaded Processing**: 5 feed workers, 3 article workers per feed  
 - ✅ **Auto-scaling**: Fargate containers with load balancer
@@ -209,7 +209,7 @@ RSS Processing:
 aws logs tail /ecs/agent-is-ai-news-aggregator-dev --follow
 
 # Check service health  
-curl https://ai-news-dev.activate.bar/status
+curl https://isp-ai-news-agg-dev.activate.bar/status
 
 # View ECS service events
 aws ecs describe-services --cluster agent-is-ai-news-aggregator-dev --services agent-is-ai-news-aggregator-dev --query "services[0].events[0:5]"
