@@ -1,262 +1,351 @@
 # agent-is-ai-news-aggregator
 
-🚀 **Now Running on AWS ECS!** - Successfully migrated from Lambda to ECS for unlimited execution time and improved performance.
+🚀 **Production-Ready AWS ECS Deployment** - High-performance AI News Aggregator with unlimited execution time and multithreaded RSS processing.
 
-This is a custom AI News Aggregator agent that processes RSS feeds using advanced multithreaded processing and AI-powered content analysis. Originally built with the oneForAll blueprint framework and Lambda deployment, now running on AWS ECS Fargate for enhanced scalability and unlimited execution time.
+## 🌐 Live Endpoints
 
-## Agent Configuration
-- **Agent Name**: agent-is-ai-news-aggregator
-- **Agent Type**: RSS Feed Processing with AI Analysis
-- **Repository**: agent-is-ai-news-aggregator
-- **Deployment**: AWS ECS Fargate with Docker containers
-- **Database**: Agent-specific DynamoDB table for job state management
-- **Graph Database**: Neo4j for article relationships and knowledge extraction
+- **Production URL**: https://isp-ai-news-agg-dev.activate.bar
+- **API Documentation**: https://isp-ai-news-agg-dev.activate.bar/docs
+- **Health Check**: https://isp-ai-news-agg-dev.activate.bar/status
+- **SSL Certificate**: Valid wildcard certificate for *.activate.bar
 
-## 🌐 Live Instance
-- **Production URL**: http://ai-news-dev-alb-1234567890.eu-west-2.elb.amazonaws.com
-- **Health Check**: `/status`
-- **API Documentation**: `/docs`
-- **Environment**: Development (auto-deployed from main branch)
+## Overview
 
-## Description
-The AI News Aggregator is a sophisticated agent that:
-- Processes multiple RSS feeds simultaneously using multithreaded architecture
-- Analyzes article content using OpenAI API for intelligent filtering and categorization
-- Stores structured data in Neo4j graph database for relationship mapping
-- Supports unlimited execution time (no 15-minute Lambda limit)
-- Provides comprehensive performance metrics and monitoring
-- Scales automatically based on demand
+A sophisticated AI-powered news aggregation system that processes multiple RSS feeds simultaneously, analyzes content using OpenAI, and stores structured data in Neo4j graph database. Originally built on AWS Lambda, now successfully migrated to ECS Fargate for unlimited execution time and enhanced performance.
 
-## 🏗️ Current Architecture (ECS Fargate)
+### Key Features
+- ⚡ **Multithreaded Processing**: 5 feed workers, 3 article workers per feed
+- 🤖 **AI Analysis**: OpenAI-powered content filtering and categorization
+- 🔗 **Graph Database**: Neo4j for relationship mapping and knowledge extraction
+- ⏰ **Unlimited Execution**: No time constraints (unlike Lambda's 15-minute limit)
+- 🔒 **Secure**: HTTPS with valid SSL, IAM roles, encrypted parameters
+- 📊 **Scalable**: Auto-scaling Fargate containers with load balancing
+- 🚀 **CI/CD**: Automated GitHub Actions deployment pipeline
 
-### Production Infrastructure
-- **Container Platform**: AWS ECS Fargate
-- **Load Balancer**: Application Load Balancer (ALB)
-- **Container Registry**: Amazon ECR
-- **Networking**: VPC with public subnets
-- **Auto-scaling**: ECS Service with desired count management
-- **Environment Logic**:
-  - main branch → dev environment
-  - prod* branches → prod environment
+## 🏗️ Architecture
 
-### Core Services
-- **Database**: DynamoDB (agent-is-ai-news-aggregator-dev-jobs)
-- **Graph Database**: Neo4j Cloud (ff9f9095.databases.neo4j.io)
-- **Configuration**: AWS SSM Parameter Store
-- **Monitoring**: CloudWatch Logs (/ecs/agent-is-ai-news-aggregator-dev)
-- **Security**: IAM roles with least privilege access
+### Current Infrastructure (ECS Fargate)
 
-### Legacy Architecture (Lambda)
-*Historical reference - no longer active*
-- **Previous Deployment**: S3-based Lambda deployment
-- **Migration Reason**: 15-minute execution limit insufficient for RSS processing
-- **S3 Bucket**: 533267084389-lambda-artifacts (legacy artifacts)
-- **Migration Date**: Successfully completed ECS deployment
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         Route53                             │
+│               (isp-ai-news-agg-dev.activate.bar)           │
+└──────────────────────────┬──────────────────────────────────┘
+                          │
+┌──────────────────────────┴──────────────────────────────────┐
+│                    Application Load Balancer                │
+│                  (HTTPS with SSL Certificate)               │
+│                    1-hour timeout support                   │
+└──────────────────────────┬──────────────────────────────────┘
+                          │
+┌──────────────────────────┴──────────────────────────────────┐
+│                     ECS Fargate Service                     │
+│                  (Auto-scaling containers)                  │
+│                    ┌──────────────────┐                     │
+│                    │   Docker Image   │                     │
+│                    │  (FastAPI App)   │                     │
+│                    └──────────────────┘                     │
+└──────────────────────────┬──────────────────────────────────┘
+                          │
+        ┌─────────────────┼─────────────────┐
+        │                 │                 │
+┌───────┴────────┐ ┌──────┴──────┐ ┌───────┴────────┐
+│    DynamoDB    │ │     SSM     │ │     Neo4j      │
+│  (Job State)   │ │ (Parameters)│ │ (Graph Data)   │
+└────────────────┘ └─────────────┘ └────────────────┘
+```
 
-## Development Guidelines
+### Infrastructure Components
+
+| Component | Details |
+|-----------|---------|
+| **Container Platform** | AWS ECS Fargate (1024 CPU, 2048 MB) |
+| **Load Balancer** | ALB with 3600s timeout for long-running tasks |
+| **Container Registry** | Amazon ECR with lifecycle policies |
+| **DNS** | Route53 with custom domain |
+| **Database** | DynamoDB (PAY_PER_REQUEST) |
+| **Graph DB** | Neo4j Cloud |
+| **Configuration** | SSM Parameter Store |
+| **Monitoring** | CloudWatch Logs |
+| **Security** | IAM roles, VPC security groups |
+
+## 🚀 Quick Start
 
 ### Prerequisites
-- python3 >= 3.11.3
-- fastapi >= 0.70.0
-- uvicorn >= 0.15.0
+- Python 3.11+
+- Docker (for local containerized testing)
+- AWS CLI configured
+- OpenAI API key
 
-### Technology Stack
-- **Web Framework**: FastAPI with async/await support
-- **ASGI Server**: Uvicorn for high-performance serving
-- **Containerization**: Docker with multi-stage builds
-- **Infrastructure**: AWS ECS Fargate
-- **Load Balancing**: Application Load Balancer (ALB)
-- **Database**: DynamoDB (agent-specific table)
-- **Graph Database**: Neo4j for relationship mapping
-- **AI Integration**: OpenAI API for content analysis
-- **Infrastructure as Code**: Terraform
-- **CI/CD**: GitHub Actions with automated deployments
-- **Monitoring**: AWS CloudWatch
-- **Security**: AWS IAM, SSM Parameter Store
-
-### Setup Instructions
+### Local Development
 
 ```bash
-# Step 1: Clone this repository
+# Clone repository
 git clone https://github.com/Activate-Intelligence/agent-is-ai-news-aggregator.git
 cd agent-is-ai-news-aggregator
 
-# Step 2: Create a .env file with your configuration
-cat > .env << 'ENV_EOF'
-APP_PORT=8000
-APP_HOST=0.0.0.0
-ALLOW_ORIGINS=http://localhost:9000,http://localhost:3000,https://api.dev.spritz.cafe,https://api.spritz.cafe,https://app.dev.spritz.cafe,https://app.spritz.cafe,https://api.dev.spritz.activate.bar,https://api.spritz.activate.bar,https://app.dev.spritz.activate.bar,https://spritz.activate.bar
-OPENAI_API_KEY=your_openai_api_key_here
-AGENT_NAME=agent-is-ai-news-aggregator
-AGENT_TYPE=general
-GH_TOKEN=your_github_token_here
-AGENT_EXECUTE_LIMIT=1
-ENV_EOF
-
-# Step 3: Set up Python environment
+# Set up Python environment
 python3 -m venv venv
 source venv/bin/activate
 pip install -r smart_agent/requirements.txt
 
-# Step 4: Run the agent locally
-cd smart_agent
-python3 main.py
-# OR
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+# Configure environment
+cat > .env << 'EOF'
+APP_PORT=8000
+APP_HOST=0.0.0.0
+OPENAI_API_KEY=your_openai_api_key_here
+AGENT_NAME=agent-is-ai-news-aggregator
+AGENT_TYPE=general
+ALLOW_ORIGINS=http://localhost:3000,http://localhost:9000
+EOF
 
-# Step 5: Access the application
+# Run application
+cd smart_agent
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+# Access endpoints
 # Local: http://localhost:8000
-# API Docs: http://localhost:8000/docs
-# Health Check: http://localhost:8000/status
+# Docs: http://localhost:8000/docs
 ```
 
-## Project Structure
+### Docker Testing
+
+```bash
+# Build Docker image
+docker build -t agent-is-ai-news-aggregator .
+
+# Run container
+docker run -p 8000:8000 \
+  -e OPENAI_API_KEY=your_key \
+  -e LOCAL_RUN=true \
+  agent-is-ai-news-aggregator
+
+# Test health check
+curl http://localhost:8000/status
+```
+
+## 📁 Project Structure
 
 ```
 agent-is-ai-news-aggregator/
-├── .github/workflows/     # GitHub Actions CI/CD
-│   ├── deploy-ecs.yml    # ECS deployment pipeline (active)
-│   └── deploy.yml        # Legacy Lambda deployment
-├── terraform/            # Infrastructure as Code
-│   └── ecs-main.tf       # ECS Fargate infrastructure
-├── smart_agent/          # Main application code
+├── .github/workflows/
+│   ├── deploy-ecs.yml         # Active ECS deployment pipeline
+│   └── deploy.yml             # Legacy Lambda deployment (disabled)
+├── terraform/
+│   ├── ecs-main.tf           # ECS infrastructure definition
+│   └── main.tf               # Legacy Lambda infrastructure
+├── smart_agent/
 │   ├── src/
-│   │   ├── agent/        # RSS processing & AI analysis
+│   │   ├── agent/
 │   │   │   ├── base_agent.py          # Core agent logic
-│   │   │   ├── rss_feed_processor.py  # Multithreaded RSS processing
-│   │   │   └── agent_config.py        # Agent configuration
-│   │   ├── config/       # Configuration files
-│   │   ├── routes/       # FastAPI route handlers
-│   │   └── utils/        # Utility functions
-│   ├── main.py           # FastAPI application entry point
-│   ├── requirements.txt  # Python dependencies
-│   └── lambda_handler.py # Configuration loader (ECS + Lambda)
-├── Dockerfile            # Docker containerization
-├── .env                  # Environment variables (local)
-├── CLAUDE.md            # Development documentation
-├── .gitignore           # Git ignore rules
-└── README.md            # This file
+│   │   │   └── rss_feed_processor.py  # RSS processing engine
+│   │   ├── config/
+│   │   │   └── agent.json             # Agent configuration
+│   │   ├── routes/                    # API endpoints
+│   │   └── utils/                     # Helper functions
+│   ├── main.py                        # FastAPI application
+│   ├── lambda_handler.py              # Configuration loader
+│   └── requirements.txt               # Python dependencies
+├── Dockerfile                         # Container definition
+├── MIGRATION.md                       # Lambda to ECS guide
+├── CLAUDE.md                         # AI assistant docs
+└── README.md                         # This file
 ```
 
-## 🚀 Deployment Information
+## 🔧 Configuration
 
-### ECS Deployment Strategy
-- **Container Platform**: AWS ECS Fargate with auto-scaling
-- **Image Registry**: Amazon ECR with lifecycle policies
-- **Load Balancer**: Application Load Balancer with health checks
-- **Zero-Downtime**: Rolling deployments with health monitoring
-- **Unlimited Execution**: No time limits (unlike Lambda's 15-minute cap)
+### Environment Variables
 
-### Infrastructure Components
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `OPENAI_API_KEY` | OpenAI API key for content analysis | ✅ |
+| `AGENT_NAME` | Agent identifier | ✅ |
+| `AGENT_TYPE` | Agent configuration type | ✅ |
+| `ALLOW_ORIGINS` | CORS allowed origins | ✅ |
+| `APP_PORT` | Application port (default: 8000) | ❌ |
+| `APP_HOST` | Application host (default: 0.0.0.0) | ❌ |
+| `JOB_TABLE` | DynamoDB table name (auto-set in ECS) | ❌ |
+| `PARAMETER_PREFIX` | SSM parameter path (auto-set in ECS) | ❌ |
 
-#### ECS Resources
-- **Cluster**: agent-is-ai-news-aggregator-dev
-- **Service**: agent-is-ai-news-aggregator-dev
-- **Task Definition**: Fargate with 1024 CPU, 2048 MB memory
-- **Container Port**: 8000
-- **Health Check**: `/status` endpoint
+### SSM Parameter Store
 
-#### Networking
-- **VPC**: Default VPC with public subnets
-- **Security Groups**: 
-  - ALB: Allows HTTP/HTTPS (80, 443)
-  - ECS Tasks: Allows traffic from ALB on port 8000
-- **Load Balancer**: ai-news-dev-alb-*.eu-west-2.elb.amazonaws.com
+All configuration is stored in AWS SSM Parameter Store under:
+```
+/app/agent-is-ai-news-aggregator/dev/
+```
 
-#### Data & Storage
-- **DynamoDB Table**: agent-is-ai-news-aggregator-dev-jobs
-- **Billing Mode**: PAY_PER_REQUEST (automatic scaling)
-- **Global Secondary Index**: status-index for efficient queries
-- **Neo4j Database**: Cloud-hosted graph database for article relationships
+Parameters are automatically loaded at container startup in ECS environment.
 
-#### Configuration Management
-- **SSM Parameter Store**: `/app/agent-is-ai-news-aggregator/dev/`
-- **Environment Variables**: Automatically loaded from Parameter Store
-- **Secrets**: Encrypted SecureString parameters for API keys
-- **GitHub Integration**: All repository secrets auto-uploaded to SSM
+## 📊 API Documentation
 
-### Environment Management
-- **Development**: Triggered by pushes to main branch
-- **Production**: Triggered by pushes to prod* branches  
-- **Automatic Deployment**: GitHub Actions with ECS service updates
-- **Resource Isolation**: Environment-specific clusters, services, and databases
+### Core Endpoints
 
-### Monitoring & Logging
-- **CloudWatch Logs**: `/ecs/agent-is-ai-news-aggregator-dev`
-- **Container Insights**: ECS performance metrics
-- **Health Monitoring**: ALB target group health checks
-- **Application Metrics**: Custom performance tracking
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/discover` | GET | Agent capabilities discovery |
+| `/execute` | POST | Start RSS processing job |
+| `/status` | GET | Health check and job status |
+| `/abort` | POST | Cancel running job |
+| `/logs` | GET | Retrieve job logs |
+| `/docs` | GET | Interactive API documentation |
 
-### Current AWS Resources (ECS)
-- ECS Fargate cluster and service
-- Application Load Balancer with target groups
-- ECR repository for container images
-- Agent-specific DynamoDB table for job state
-- SSM Parameter Store for configuration
-- CloudWatch Logs for monitoring
-- IAM roles with least privilege access
+### Example: Execute RSS Processing
 
-### Legacy Resources (Lambda)
-*No longer active - kept for reference*
-- Lambda function (deprecated)
-- API Gateway (replaced by ALB)
-- S3 deployment artifacts (533267084389-lambda-artifacts)
-
-## 📊 Performance & Features
-
-### RSS Processing Capabilities
-- **Multithreaded Processing**: 5 feed workers, 3 article workers per feed
-- **Concurrent Processing**: Up to 15 simultaneous article analyses
-- **AI-Powered Filtering**: OpenAI integration for intelligent content analysis
-- **Graph Database Storage**: Neo4j for relationship mapping and knowledge extraction
-- **Unlimited Execution Time**: No 15-minute Lambda constraints
-
-### Performance Metrics (Recent)
-- **Processing Speed**: ~50+ articles processed in parallel
-- **Feed Sources**: Multiple RSS feeds simultaneously
-- **Success Rate**: High reliability with comprehensive error handling
-- **Scalability**: Auto-scaling based on demand
-
-### API Documentation
-- **Local Development**: http://localhost:8000/docs
-- **Production API**: http://ai-news-dev-alb-*.eu-west-2.elb.amazonaws.com/docs
-- **Health Check**: `/status` endpoint
-- **Interactive Docs**: Swagger UI with live testing capabilities
-
-## 🔧 Operations & Maintenance
-
-### Monitoring Commands
 ```bash
-# Check ECS service status
-aws ecs describe-services --cluster agent-is-ai-news-aggregator-dev --services agent-is-ai-news-aggregator-dev
+curl -X POST https://isp-ai-news-agg-dev.activate.bar/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "config": {
+      "feeds": ["tech", "ai", "startup"]
+    }
+  }'
+```
 
-# View container logs
+## 🚨 Monitoring & Operations
+
+### CloudWatch Logs
+```bash
+# View real-time logs
 aws logs tail /ecs/agent-is-ai-news-aggregator-dev --follow
 
-# Check load balancer health
-aws elbv2 describe-target-health --target-group-arn <target-group-arn>
-
-# View SSM parameters
-aws ssm get-parameters-by-path --path /app/agent-is-ai-news-aggregator/dev/
+# Search for errors
+aws logs filter-log-events \
+  --log-group-name /ecs/agent-is-ai-news-aggregator-dev \
+  --filter-pattern "ERROR"
 ```
 
-### Deployment Status
-- ✅ **ECS Infrastructure**: Deployed and running
-- ✅ **Load Balancer**: Healthy and routing traffic  
-- ✅ **Container Registry**: Images successfully pushed
-- ✅ **Database**: DynamoDB table operational
-- ✅ **Configuration**: SSM parameters loaded
-- ✅ **CI/CD Pipeline**: GitHub Actions automated deployment
+### ECS Service Management
+```bash
+# Check service status
+aws ecs describe-services \
+  --cluster agent-is-ai-news-aggregator-dev \
+  --services agent-is-ai-news-aggregator-dev
 
-### Troubleshooting
-- **Container Issues**: Check CloudWatch logs at `/ecs/agent-is-ai-news-aggregator-dev`
-- **Health Check Failures**: Verify `/status` endpoint response
-- **Parameter Loading**: Confirm SSM Parameter Store values
-- **Network Issues**: Check security group configurations
+# Force new deployment
+aws ecs update-service \
+  --cluster agent-is-ai-news-aggregator-dev \
+  --service agent-is-ai-news-aggregator-dev \
+  --force-new-deployment
 
-## Built with oneForAll Blueprint
-This agent was generated using the oneForAll blueprint system with optimized S3 deployment and agent-specific DynamoDB tables.
-- Blueprint Repository: https://github.com/Activate-Intelligence/oneForAll_blueprint_Lambda
-- Generated on: Mon Aug  4 09:26:23 BST 2025
-- S3 Deployment: Latest-only storage optimization
-- DynamoDB: Agent-specific table isolation
+# Scale service
+aws ecs update-service \
+  --cluster agent-is-ai-news-aggregator-dev \
+  --service agent-is-ai-news-aggregator-dev \
+  --desired-count 2
+```
+
+### Health Monitoring
+```bash
+# Check ALB health
+aws elbv2 describe-target-health \
+  --target-group-arn $(aws elbv2 describe-target-groups \
+    --names ai-news-dev-tg \
+    --query 'TargetGroups[0].TargetGroupArn' \
+    --output text)
+
+# Test endpoint
+curl -f https://isp-ai-news-agg-dev.activate.bar/status
+```
+
+## 🔄 CI/CD Pipeline
+
+### GitHub Actions Workflow
+
+1. **Trigger**: Push to `main` branch
+2. **Build**: Docker image creation
+3. **Push**: Upload to Amazon ECR
+4. **Deploy**: Update ECS service
+5. **Verify**: Health check validation
+
+### Manual Deployment
+```bash
+# Build and push Docker image
+docker build -t agent-is-ai-news-aggregator .
+docker tag agent-is-ai-news-aggregator:latest \
+  $ECR_REPOSITORY_URL:latest
+docker push $ECR_REPOSITORY_URL:latest
+
+# Update ECS service
+aws ecs update-service \
+  --cluster agent-is-ai-news-aggregator-dev \
+  --service agent-is-ai-news-aggregator-dev \
+  --force-new-deployment
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues & Solutions
+
+| Issue | Solution |
+|-------|----------|
+| **504 Gateway Timeout** | ALB timeout configured for 1 hour, check if request exceeds limit |
+| **SSM Parameters Not Loading** | Verify IAM role has `ssm:GetParametersByPath` permission |
+| **Container Health Check Failing** | Ensure curl is installed in Docker image |
+| **CORS Errors** | Check ALLOW_ORIGINS environment variable includes frontend URL |
+| **Task Fails to Start** | Check CloudWatch logs for startup errors |
+| **Memory Issues** | Increase task memory in Terraform (default: 2048 MB) |
+
+### Debug Commands
+```bash
+# Get task ARN
+TASK_ARN=$(aws ecs list-tasks \
+  --cluster agent-is-ai-news-aggregator-dev \
+  --service-name agent-is-ai-news-aggregator-dev \
+  --query 'taskArns[0]' --output text)
+
+# Describe task details
+aws ecs describe-tasks \
+  --cluster agent-is-ai-news-aggregator-dev \
+  --tasks $TASK_ARN
+
+# Get container logs
+aws logs get-log-events \
+  --log-group-name /ecs/agent-is-ai-news-aggregator-dev \
+  --log-stream-name ecs/agent-is-ai-news-aggregator-dev/${TASK_ARN##*/}
+```
+
+## 🔄 Migration from Lambda
+
+See [MIGRATION.md](MIGRATION.md) for detailed Lambda to ECS migration guide.
+
+### Key Improvements After Migration
+- ✅ **Unlimited execution time** (was 15 minutes)
+- ✅ **Better performance** with container reuse
+- ✅ **Simplified debugging** with persistent logs
+- ✅ **Enhanced scalability** with auto-scaling
+- ✅ **Improved reliability** with health checks
+- ✅ **Custom domain** with SSL certificate
+
+## 📈 Performance Metrics
+
+- **Processing Capacity**: 50+ articles in parallel
+- **Feed Workers**: 5 concurrent RSS feeds
+- **Article Workers**: 3 per feed (15 total potential)
+- **Timeout Support**: Up to 1 hour per request
+- **Auto-scaling**: Based on CPU/memory utilization
+- **Availability**: Multi-AZ deployment
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test locally with Docker
+5. Submit a pull request
+
+## 📝 License
+
+This project is part of the Activate Intelligence platform.
+
+## 🙏 Acknowledgments
+
+- Built with the oneForAll blueprint framework
+- Powered by OpenAI for intelligent content analysis
+- Neo4j for advanced graph data capabilities
+- AWS for robust cloud infrastructure
+
+---
+
+**Last Updated**: December 2024
+**Status**: ✅ Production Ready
+**Endpoint**: https://isp-ai-news-agg-dev.activate.bar

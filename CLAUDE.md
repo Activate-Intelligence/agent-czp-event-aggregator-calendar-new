@@ -39,11 +39,14 @@ aws ecs update-service --cluster agent-is-ai-news-aggregator-dev --service agent
 aws ecs describe-services --cluster agent-is-ai-news-aggregator-dev --services agent-is-ai-news-aggregator-dev
 ```
 
-### Current Deployment Status
-- **Load Balancer URL**: https://isp-ai-news-agg-dev.activate.bar
+### 🌐 Current Deployment Status
+- **Production URL**: https://isp-ai-news-agg-dev.activate.bar
 - **API Documentation**: https://isp-ai-news-agg-dev.activate.bar/docs  
 - **Health Check**: https://isp-ai-news-agg-dev.activate.bar/status
 - **RSS Processing**: POST to `/execute` endpoint
+- **SSL Certificate**: Valid wildcard certificate for *.activate.bar
+- **Timeout Support**: 1 hour for long-running RSS processing
+- **Auto-scaling**: Fargate containers based on demand
 
 ### Legacy Lambda Packaging
 ```bash
@@ -60,10 +63,14 @@ This is an AI News Aggregator built with the oneForAll blueprint framework, **su
 
 ### 🚀 **Current Status: Production Ready on ECS**
 - ✅ **Deployed & Running**: https://isp-ai-news-agg-dev.activate.bar
+- ✅ **HTTPS Enabled**: Valid SSL certificate with custom domain
 - ✅ **Unlimited Execution Time**: No 15-minute Lambda limitations
+- ✅ **Long-running Support**: 1-hour ALB timeout for RSS processing
 - ✅ **Multithreaded Processing**: 5 feed workers, 3 article workers per feed  
-- ✅ **Auto-scaling**: Fargate containers with load balancer
-- ✅ **High Availability**: Load balancer with health checks
+- ✅ **Auto-scaling**: Fargate containers with intelligent scaling
+- ✅ **High Availability**: Multi-AZ load balancer with health checks
+- ✅ **Secure Configuration**: SSM Parameter Store with encrypted secrets
+- ✅ **CI/CD Pipeline**: Automated GitHub Actions deployment
 
 ### Key Components
 
