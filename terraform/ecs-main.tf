@@ -560,85 +560,9 @@ resource "aws_ecs_service" "app" {
   }
 }
 
-########################################
-#           CloudFront Distribution     #
-########################################
-
-# Create CloudFront distribution for random HTTPS URL
-resource "aws_cloudfront_distribution" "app" {
-  enabled             = true
-  is_ipv6_enabled    = true
-  comment            = "CloudFront distribution for ${var.service_name}-${var.environment}"
-  default_root_object = ""
-  
-  # Origin configuration pointing to ALB
-  origin {
-    domain_name = aws_lb.main.dns_name
-    origin_id   = "ALB-${var.service_name}-${var.environment}"
-    
-    custom_origin_config {
-      http_port              = 80
-      https_port             = 443
-      origin_protocol_policy = "https-only"
-      origin_ssl_protocols   = ["TLSv1.2"]
-      
-      # Very important: Set high timeout for long-running requests
-      origin_read_timeout      = 3600  # 1 hour
-      origin_keepalive_timeout = 3600  # 1 hour
-    }
-  }
-  
-  # Default cache behavior
-  default_cache_behavior {
-    allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
-    cached_methods   = ["GET", "HEAD"]
-    target_origin_id = "ALB-${var.service_name}-${var.environment}"
-    
-    # Disable caching for API endpoints
-    cache_policy_id = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"  # CachingDisabled managed policy
-    origin_request_policy_id = "216adef6-5c7f-47e4-b989-5492eafa07d3"  # AllViewer managed policy
-    
-    viewer_protocol_policy = "redirect-to-https"
-    min_ttl                = 0
-    default_ttl            = 0
-    max_ttl                = 0
-    compress               = true
-  }
-  
-  # Price class - use all edge locations for best performance
-  price_class = "PriceClass_All"
-  
-  # Geo restrictions - none
-  restrictions {
-    geo_restriction {
-      restriction_type = "none"
-    }
-  }
-  
-  # SSL certificate - use CloudFront default certificate
-  viewer_certificate {
-    cloudfront_default_certificate = true
-    minimum_protocol_version       = "TLSv1.2_2021"
-  }
-  
-  # Custom error responses for better handling
-  custom_error_response {
-    error_code            = 504
-    error_caching_min_ttl = 0
-  }
-  
-  custom_error_response {
-    error_code            = 502
-    error_caching_min_ttl = 0
-  }
-  
-  tags = {
-    Name        = "${var.service_name}-${var.environment}-cloudfront"
-    Environment = var.environment
-    ManagedBy   = "Terraform"
-    ServiceName = var.service_name
-  }
-}
+# Note: CloudFront removed due to 60-second timeout limitation
+# CloudFront cannot support long-running requests over 60 seconds
+# Use the ALB URL directly for RSS processing that needs longer timeouts
 
 ########################################
 #               Outputs                #
@@ -703,31 +627,13 @@ output "cloudwatch_log_group" {
   description = "CloudWatch log group name"
 }
 
-output "cloudfront_url" {
-  value       = "https://${aws_cloudfront_distribution.app.domain_name}"
-  description = "CloudFront distribution URL (random HTTPS endpoint)"
-}
-
-output "cloudfront_distribution_id" {
-  value       = aws_cloudfront_distribution.app.id
-  description = "CloudFront distribution ID"
-}
-
-output "cloudfront_status" {
-  value       = aws_cloudfront_distribution.app.status
-  description = "CloudFront distribution status"
-}
-
-output "api_endpoints_cloudfront" {
+output "alternative_urls" {
   value = {
-    base_url     = "https://${aws_cloudfront_distribution.app.domain_name}"
-    discover     = "https://${aws_cloudfront_distribution.app.domain_name}/discover"
-    execute      = "https://${aws_cloudfront_distribution.app.domain_name}/execute"
-    status       = "https://${aws_cloudfront_distribution.app.domain_name}/status"
-    health_check = "https://${aws_cloudfront_distribution.app.domain_name}/status"
-    docs         = "https://${aws_cloudfront_distribution.app.domain_name}/docs"
+    custom_domain = var.domain_name != "" ? "https://${var.domain_name}" : "Not configured"
+    alb_direct    = "https://${aws_lb.main.dns_name}"
+    note          = "CloudFront not suitable due to 60-second timeout limit for long-running RSS processing"
   }
-  description = "API endpoints accessible via CloudFront (random URL)"
+  description = "Available HTTPS endpoints for the API"
 }
 
 output "ssm_parameter_info" {
