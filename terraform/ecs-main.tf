@@ -624,15 +624,11 @@ resource "aws_cloudfront_distribution" "app" {
   # Custom error responses for better handling
   custom_error_response {
     error_code            = 504
-    response_code         = 504
-    response_page_path    = ""
     error_caching_min_ttl = 0
   }
   
   custom_error_response {
     error_code            = 502
-    response_code         = 502
-    response_page_path    = ""
     error_caching_min_ttl = 0
   }
   
