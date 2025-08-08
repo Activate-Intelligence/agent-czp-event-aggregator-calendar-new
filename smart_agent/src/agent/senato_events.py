@@ -18,7 +18,9 @@ from neo4j import GraphDatabase
 from datetime import datetime, timedelta
 
 
-API_KEY = os.environ.get("OPENAI_API_KEY")
+def get_openai_api_key():
+    """Get OpenAI API key from environment variables."""
+    return os.environ.get("OPENAI_API_KEY")
 
 
 from neo4j import GraphDatabase
@@ -592,7 +594,7 @@ def process_commission_events_with_gpt4o(commission_name, events):
         events_with_ids.sort(key=lambda x: (x["Date"], x["Time"]))
 
         # Initialize OpenAI client
-        openai_client = openai.OpenAI(api_key=API_KEY)
+        openai_client = openai.OpenAI(api_key=get_openai_api_key())
 
         # Format events for the prompt
         events_text = json.dumps(events_with_ids, indent=2, ensure_ascii=False)

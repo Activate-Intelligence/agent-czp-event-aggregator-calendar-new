@@ -16,10 +16,10 @@ from .get_prompt_from_git import main as promptDownloader
 from neo4j import GraphDatabase
 from datetime import datetime, timedelta
 
-# Initialize OpenAI client with API key from environment
-client = OpenAI(
-    api_key=os.environ.get("OPENAI_API_KEY")
-)
+# Initialize OpenAI client lazily to avoid import-time errors
+def get_openai_client():
+    """Get OpenAI client, initializing it lazily when first needed."""
+    return OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 
 
@@ -1327,7 +1327,7 @@ def process_event_with_openai(event_data):
         )
         print("---" * 30)
 
-        response = client.chat.completions.create(
+        response = get_openai_client().chat.completions.create(
             model=model_params['name'],  # Or your specific model
             response_format={"type": "json_object"},
             messages=[
