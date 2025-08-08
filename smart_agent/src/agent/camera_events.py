@@ -428,13 +428,14 @@ def scrape_camera_schedule(api_token="2bb56bfb-58ce-4bfe-a945-61123158cde6"):
             table_data = process_table(table, base_url)
             all_data.extend(table_data)
 
-        call_webhook_with_success(payload.get('id'),{
-            "status": "inprogress",
-            "data": {
-                "title": f"Processing the camera extraction",
-                "info": "Processing",
-            },
-        })
+        if job_id:
+            call_webhook_with_success(job_id, {
+                "status": "inprogress",
+                "data": {
+                    "title": f"Processing the camera extraction",
+                    "info": "Processing",
+                },
+            })
 
         # Now fetch details for each meeting URL
         all_data = fetch_meeting_details(all_data, headers, base_url)
@@ -1693,20 +1694,21 @@ def debug_final_event_summary(events):
 
     print(f"=== END FINAL EVENT SUMMARY ===\n")
     
-def camera_main():
+def camera_main(job_id=None):
     print("Starting Camera.it schedule scraper...")
     promptDownloader()
     # Use the provided API token for the calendar scraping
     api_token = "2bb56bfb-58ce-4bfe-a945-61123158cde6"
     data = scrape_camera_schedule(api_token=api_token)
 
-    call_webhook_with_success(payload.get('id'),{
-        "status": "inprogress",
-        "data": {
-            "title": f"Extracting the URLs from the camera resource",
-            "info": "Processing",
-        },
-    })
+    if job_id:
+        call_webhook_with_success(job_id, {
+            "status": "inprogress",
+            "data": {
+                "title": f"Extracting the URLs from the camera resource",
+                "info": "Processing",
+            },
+        })
 
     if data:
         # ADD THIS LINE: Filter events by current week before processing
@@ -1776,13 +1778,14 @@ def camera_main():
         calendar_sample = next(
             (item for item in data if item.get('content') == "Calendar entry"),
             None)
-        call_webhook_with_success(payload.get('id'),{
-            "status": "inprogress",
-            "data": {
-                "title": f"Camera extraction continues",
-                "info": "Processing",
-            },
-        })
+        if job_id:
+            call_webhook_with_success(job_id, {
+                "status": "inprogress",
+                "data": {
+                    "title": f"Camera extraction continues",
+                    "info": "Processing",
+                },
+            })
 
         if calendar_sample:
             print("\n--- CALENDAR SAMPLE ---")
@@ -1825,26 +1828,28 @@ def camera_main():
             entity_name = event_container.get('entity', f'Unknown entity (Entry {i+1})')
             print(f"[{i+1}/{total_top_level_entries}] Processing entry for: {entity_name}")
     
-            call_webhook_with_success(payload.get('id'),{
-                "status": "inprogress",
-                "data": {
-                    "title": f"Camera extraction is processing for each events",
-                    "info": "Processing",
-                },
-            })
+            if job_id:
+                call_webhook_with_success(job_id, {
+                    "status": "inprogress",
+                    "data": {
+                        "title": f"Camera extraction is processing for each events",
+                        "info": "Processing",
+                    },
+                })
     
             start_time = time.time()
             normalized_events = process_event_with_openai(event_container)
             elapsed = time.time() - start_time
     
             for event in normalized_events:
-                call_webhook_with_success(payload.get('id'),{
-                    "status": "inprogress",
-                    "data": {
-                        "title": f"Normalising the camera event ",
-                        "info": "Processing",
-                    },
-                })
+                if job_id:
+                    call_webhook_with_success(job_id, {
+                        "status": "inprogress",
+                        "data": {
+                            "title": f"Normalising the camera event ",
+                            "info": "Processing",
+                        },
+                    })
                 if all([
                     not is_value_empty(event.get("date")),
                     not is_value_empty(event.get("start_time")),
@@ -1878,13 +1883,14 @@ def camera_main():
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump({"data": filtered_events}, f, ensure_ascii=False, indent=2)
 
-        call_webhook_with_success(payload.get('id'),{
-            "status": "inprogress",
-            "data": {
-                "title": f"Filtered events are now stored in json file",
-                "info": "Processing",
-            },
-        })
+        if job_id:
+            call_webhook_with_success(job_id, {
+                "status": "inprogress",
+                "data": {
+                    "title": f"Filtered events are now stored in json file",
+                    "info": "Processing",
+                },
+            })
 
         print(f"\nProcessing complete. Stored {len(filtered_events)} valid events for current week.")
         print(f"Output written to {output_file}")
@@ -1903,13 +1909,14 @@ def camera_main():
     input_file_path = "normalized_events.json"  # Output from your first script
     output_file_path = "grouped_events.json"  # The new desired grouped format
 
-    call_webhook_with_success(payload.get('id'),{
-        "status": "inprogress",
-        "data": {
-            "title": f"Extracted events are now grouped and formatted",
-            "info": "Processing",
-        },
-    })
+    if job_id:
+        call_webhook_with_success(job_id, {
+            "status": "inprogress",
+            "data": {
+                "title": f"Extracted events are now grouped and formatted",
+                "info": "Processing",
+            },
+        })
 
     # Convert the data
     convert_to_grouped_format(input_file_path, output_file_path)
@@ -1920,13 +1927,14 @@ def camera_main():
     neo4j_password = "W0pumaSXNH7U2ZfsNPl4gB1tS4Iw1e-79LbKD7e05fk"
     json_file = "grouped_events.json"  # Your JSON file
 
-    call_webhook_with_success(payload.get('id'),{
-        "status": "inprogress",
-        "data": {
-            "title": f"Working on the Neo4j DB now",
-            "info": "Processing",
-        },
-    })
+    if job_id:
+        call_webhook_with_success(job_id, {
+            "status": "inprogress",
+            "data": {
+                "title": f"Working on the Neo4j DB now",
+                "info": "Processing",
+            },
+        })
 
     # Load Camera events from JSON (these are already filtered for current week)
     print(f"Loading Camera events from {json_file}...")
@@ -1945,13 +1953,14 @@ def camera_main():
 
     try:
         # Sync events to Neo4j
-        call_webhook_with_success(payload.get('id'),{
-            "status": "inprogress",
-            "data": {
-                "title": f"Syncing events to Neo4j",
-                "info": "Processing",
-            },
-        })
+        if job_id:
+            call_webhook_with_success(job_id, {
+                "status": "inprogress",
+                "data": {
+                    "title": f"Syncing events to Neo4j",
+                    "info": "Processing",
+                },
+            })
 
         added_count = neo4j.sync_events_to_neo4j(events)
 

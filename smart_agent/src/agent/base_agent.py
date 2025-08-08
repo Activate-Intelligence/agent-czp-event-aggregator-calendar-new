@@ -419,7 +419,7 @@ def base_agent(payload):
         
         if out_c == True:
             print(f"Processing Camera for week: {current_week_camera}")
-            camera_main()
+            camera_main(payload.get('id'))
             call_webhook_with_success(payload.get('id'), {
                 "status": "inprogress",
                 "data": {
