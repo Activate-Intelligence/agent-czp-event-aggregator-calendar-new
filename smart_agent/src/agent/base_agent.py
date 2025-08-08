@@ -41,8 +41,10 @@ except ImportError:
 # Configuration flag - Change this to switch between dev and prod modes
 ENVIRONMENT_MODE = "dev"  # Change to "prod" for production or dev for development
 
-openai_api_key = os.environ.get("OPENAI_API_KEY")
-client = OpenAI(api_key=openai_api_key)
+def get_openai_client():
+    """Get OpenAI client, initializing it lazily when first needed."""
+    openai_api_key = os.environ.get("OPENAI_API_KEY")
+    return OpenAI(api_key=openai_api_key)
 
 
 load_dotenv()  # This will load environment variables from the .env file
@@ -183,7 +185,7 @@ def llm(context, inquiry):
     print("---"*30)
     
     try:
-        response = client.chat.completions.create(
+        response = get_openai_client().chat.completions.create(
             model=model_params['name'],
             messages=[
                 {
