@@ -50,10 +50,7 @@ def get_openai_client():
 load_dotenv()  # This will load environment variables from the .env file
 
 
-openai.api_key = os.environ.get('OPENAI_API_KEY')
-
-# Initialize OpenAI and Neo4j clients
-client = OpenAI()
+# OpenAI client is initialized lazily via get_openai_client() function above
 
 logger = Logger()
 
