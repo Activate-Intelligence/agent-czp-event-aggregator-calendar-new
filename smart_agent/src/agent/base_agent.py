@@ -25,9 +25,6 @@ import concurrent.futures
 # ECS environment - import BeautifulSoup directly
 from bs4 import BeautifulSoup
 
-# Import Neo4j for database checking
-from neo4j import GraphDatabase
-
 # Configuration flag - Change this to switch between dev and prod modes
 ENVIRONMENT_MODE = "dev"  # Change to "prod" for production or dev for development
 
@@ -56,6 +53,8 @@ class Neo4jWeekChecker:
     def connect(self):
         """Establish connection to Neo4j"""
         if not self.driver:
+            # Lazy import to avoid circular dependency
+            from neo4j import GraphDatabase
             self.driver = GraphDatabase.driver(self.uri, auth=(self.username, self.password))
     
     def close(self):
@@ -185,28 +184,38 @@ class Neo4jWeekChecker:
 
 def check_senato_neo4j():
     """Check if Senato events for the target week exist in Neo4j"""
-    checker = Neo4jWeekChecker()
-    has_events, event_count, week_string = checker.check_events_exist_for_week(source_type='Senato')
-    
-    if has_events:
-        print(f"Already processed Senato for week: {week_string} ({event_count} events found)")
-        return False, week_string
-    else:
-        print(f"No Senato events found for week: {week_string}. Processing needed.")
-        return True, week_string
+    try:
+        checker = Neo4jWeekChecker()
+        has_events, event_count, week_string = checker.check_events_exist_for_week(source_type='Senato')
+        
+        if has_events:
+            print(f"Already processed Senato for week: {week_string} ({event_count} events found)")
+            return False, week_string
+        else:
+            print(f"No Senato events found for week: {week_string}. Processing needed.")
+            return True, week_string
+    except Exception as e:
+        print(f"Error checking Senato in Neo4j: {e}")
+        # On error, fall back to processing to be safe
+        return True, "Unknown week"
 
 
 def check_camera_neo4j():
     """Check if Camera events for the target week exist in Neo4j"""
-    checker = Neo4jWeekChecker()
-    has_events, event_count, week_string = checker.check_events_exist_for_week(source_type='Camera')
-    
-    if has_events:
-        print(f"Already processed Camera for week: {week_string} ({event_count} events found)")
-        return False, week_string
-    else:
-        print(f"No Camera events found for week: {week_string}. Processing needed.")
-        return True, week_string
+    try:
+        checker = Neo4jWeekChecker()
+        has_events, event_count, week_string = checker.check_events_exist_for_week(source_type='Camera')
+        
+        if has_events:
+            print(f"Already processed Camera for week: {week_string} ({event_count} events found)")
+            return False, week_string
+        else:
+            print(f"No Camera events found for week: {week_string}. Processing needed.")
+            return True, week_string
+    except Exception as e:
+        print(f"Error checking Camera in Neo4j: {e}")
+        # On error, fall back to processing to be safe
+        return True, "Unknown week"
 
 
 def check_senato():
@@ -395,14 +404,81 @@ def base_agent(payload):
         call_webhook_with_error(payload.get('id'), str(e), 500) # MULTI THREADED
 
 
-# # Optional: Add a utility function to force re-processing if needed
-# def force_reprocess_week(source_type=None):
-#     """
-#     Utility function to clear a week's events and force re-processing
+# Optional: Add a utility function to force re-processing if needed
+def force_reprocess_week(source_type=None):
+    """
+    Utility function to clear a week's events and force re-processing
     
-#     Args:
-#         source_type: 'Senato', 'Camera', or None for both
-#     """
-#     checker = Neo4jWeekChecker()
-#     checker.clear_week_events(source_type)
-#     print(f"Cleared {source_type or 'all'} events for target week. Next run will reprocess.")
+    Args:
+        source_type: 'Senato', 'Camera', or None for both
+    """
+    try:
+        checker = Neo4jWeekChecker()
+        checker.clear_week_events(source_type)
+        print(f"Cleared {source_type or 'all'} events for target week. Next run will reprocess.")
+    except Exception as e:
+        print(f"Error clearing events: {e}")
+
+
+# Alternative simpler approach if you still have import issues:
+# You can also directly check using a simple function without the class
+def simple_check_week_in_neo4j(source_type=None):
+    """
+    Simplified version without class - directly checks Neo4j
+    """
+    try:
+        from neo4j import GraphDatabase
+        from datetime import datetime, timedelta
+        
+        # Get target week
+        today = datetime.now().date()
+        days_until_monday = (7 - today.weekday()) % 7
+        if days_until_monday == 0 and today.weekday() != 0:
+            days_until_monday = 7
+        elif today.weekday() == 0:
+            days_until_monday = 0
+        
+        monday = today + timedelta(days=days_until_monday)
+        friday = monday + timedelta(days=4)
+        monday_str = monday.strftime("%Y-%m-%d")
+        friday_str = friday.strftime("%Y-%m-%d")
+        
+        # Connect to Neo4j
+        driver = GraphDatabase.driver(
+            "neo4j+s://c94a0c28.databases.neo4j.io",
+            auth=("neo4j", "W0pumaSXNH7U2ZfsNPl4gB1tS4Iw1e-79LbKD7e05fk")
+        )
+        
+        with driver.session() as session:
+            if source_type:
+                query = """
+                MATCH (source:Calendar_Source)-[:HAS_EVENT]->(event:Event)
+                WHERE event.date >= $monday_str 
+                AND event.date <= $friday_str
+                AND source.type = $source_type
+                RETURN count(event) as event_count
+                """
+                result = session.run(query, 
+                                   monday_str=monday_str, 
+                                   friday_str=friday_str,
+                                   source_type=source_type)
+            else:
+                query = """
+                MATCH (event:Event)
+                WHERE event.date >= $monday_str 
+                AND event.date <= $friday_str
+                RETURN count(event) as event_count
+                """
+                result = session.run(query, 
+                                   monday_str=monday_str, 
+                                   friday_str=friday_str)
+            
+            record = result.single()
+            event_count = record["event_count"] if record else 0
+            
+        driver.close()
+        return event_count > 0, event_count
+        
+    except Exception as e:
+        print(f"Error checking Neo4j: {e}")
+        return False, 0
