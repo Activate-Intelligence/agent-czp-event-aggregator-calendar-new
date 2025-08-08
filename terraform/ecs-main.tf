@@ -405,7 +405,7 @@ resource "aws_ecs_cluster" "main" {
 
 # IAM role for ECS task execution
 resource "aws_iam_role" "ecs_task_execution" {
-  name = "${var.service_name}-${var.environment}-ecs-task-execution-${random_id.deployment.hex}"
+  name = "czp-cal-${var.environment}-ecs-exec-${random_id.deployment.hex}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -434,7 +434,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
 
 # IAM role for ECS tasks
 resource "aws_iam_role" "ecs_task" {
-  name = "${var.service_name}-${var.environment}-ecs-task-${random_id.deployment.hex}"
+  name = "czp-cal-${var.environment}-ecs-task-${random_id.deployment.hex}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -458,7 +458,7 @@ resource "aws_iam_role" "ecs_task" {
 
 # Create IAM policy for DynamoDB access for ECS tasks
 resource "aws_iam_policy" "ecs_dynamodb_rw" {
-  name = "${var.service_name}-${var.environment}-ecs-dynamodb-rw-${random_id.deployment.hex}"
+  name = "czp-cal-${var.environment}-ddb-rw-${random_id.deployment.hex}"
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [{
@@ -488,7 +488,7 @@ resource "aws_iam_policy" "ecs_dynamodb_rw" {
 
 # Create IAM policy for SSM Parameter Store access for ECS tasks
 resource "aws_iam_policy" "ecs_ssm_parameter_read" {
-  name = "${var.service_name}-${var.environment}-ecs-ssm-parameter-read-${random_id.deployment.hex}"
+  name = "czp-cal-${var.environment}-ssm-read-${random_id.deployment.hex}"
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [{
