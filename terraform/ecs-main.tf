@@ -82,7 +82,7 @@ variable "image_tag" {
 variable "domain_name" {
   description = "Custom domain name for the ALB (optional)"
   type        = string
-  default     = "czp-event-aggregator-calendar.bar"
+  default     = "czp-event-aggregator-calendar.activate.bar"
 }
 
 variable "certificate_arn" {

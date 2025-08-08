@@ -40,9 +40,9 @@ aws ecs describe-services --cluster agent-czp-event-aggregator-calendar-dev --se
 ```
 
 ### Current Deployment Status
-- **Load Balancer URL**: https://czp-event-aggregator-calendar.bar
-- **API Documentation**: https://czp-event-aggregator-calendar.bar/docs  
-- **Health Check**: https://czp-event-aggregator-calendar.bar/status
+- **Load Balancer URL**: https://czp-event-aggregator-calendar.activate.bar
+- **API Documentation**: https://czp-event-aggregator-calendar.activate.bar/docs  
+- **Health Check**: https://czp-event-aggregator-calendar.activate.bar/status
 - **Event Processing**: POST to `/execute` endpoint
 
 ### Legacy Lambda Packaging
@@ -59,7 +59,7 @@ python -c "import uvicorn, fastapi; print('✓ FastAPI and Uvicorn ready')"
 This is a **CZP Parliamentary Calendar Event Aggregator** built with the oneForAll blueprint framework, **successfully deployed on AWS ECS** with unlimited execution time for Parliamentary calendar processing. The project processes Italian Parliamentary events from Camera and Senato sources, enriches them with OpenAI, and stores them in Neo4j.
 
 ### 🚀 **Current Status: Production Ready on ECS**
-- ✅ **Deployed & Running**: https://czp-event-aggregator-calendar.bar
+- ✅ **Deployed & Running**: https://czp-event-aggregator-calendar.activate.bar
 - ✅ **Unlimited Execution Time**: No 15-minute Lambda limitations
 - ✅ **Parliamentary Event Processing**: Camera and Senato calendar aggregation
 - ✅ **OpenAI Integration**: Event enrichment and normalization
@@ -225,11 +225,11 @@ Parliamentary Calendar Processing:
 aws logs tail /ecs/agent-czp-event-aggregator-calendar-dev --follow
 
 # Check service health  
-curl https://czp-event-aggregator-calendar.bar/status
+curl https://czp-event-aggregator-calendar.activate.bar/status
 
 # View ECS service events
 aws ecs describe-services --cluster agent-czp-event-aggregator-calendar-dev --services agent-czp-event-aggregator-calendar-dev --query "services[0].events[0:5]"
 
 # Test Parliamentary calendar processing
-curl -X POST https://czp-event-aggregator-calendar.bar/execute
+curl -X POST https://czp-event-aggregator-calendar.activate.bar/execute
 ```
