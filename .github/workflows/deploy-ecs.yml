@@ -202,18 +202,48 @@ jobs:
           CLUSTER_NAME="agent-czp-event-aggregator-calendar-$ENVIRONMENT"
           SERVICE_NAME="agent-czp-event-aggregator-calendar-$ENVIRONMENT"
           
-          echo "Waiting for ECS service deployment to complete (timeout: 10 minutes)..."
-          # Wait up to 10 minutes (40 attempts * 15 seconds = 600 seconds)
-          timeout 600 aws ecs wait services-stable --cluster $CLUSTER_NAME --services $SERVICE_NAME || {
-            echo "::warning::Service deployment timed out after 10 minutes. Checking status..."
-            aws ecs describe-services --cluster $CLUSTER_NAME --services $SERVICE_NAME \
-              --query "services[0].{status:status,runningCount:runningCount,desiredCount:desiredCount,deployments:deployments[*].status}" \
-              --output json
-            echo "::notice::Deployment may still be in progress. Check ECS console for details."
-            exit 0  # Don't fail the workflow, just warn
-          }
+          echo "Waiting for ECS service deployment to complete (timeout: 5 minutes)..."
           
-          echo "ECS service deployment completed successfully!"
+          # Custom wait logic instead of services-stable (which is too strict)
+          MAX_ATTEMPTS=20  # 20 attempts * 15 seconds = 5 minutes
+          attempt=1
+          
+          while [ $attempt -le $MAX_ATTEMPTS ]; do
+            echo "Attempt $attempt/$MAX_ATTEMPTS: Checking deployment status..."
+            
+            # Get service status
+            service_info=$(aws ecs describe-services --cluster $CLUSTER_NAME --services $SERVICE_NAME \
+              --query 'services[0].{runningCount:runningCount,desiredCount:desiredCount,deployments:deployments[?status==`PRIMARY`]|[0].{status:status,createdAt:createdAt,updatedAt:updatedAt}}' \
+              --output json)
+            
+            running_count=$(echo $service_info | jq -r '.runningCount // 0')
+            desired_count=$(echo $service_info | jq -r '.desiredCount // 1')
+            deployment_status=$(echo $service_info | jq -r '.deployments.status // "UNKNOWN"')
+            
+            echo "Service status: $running_count/$desired_count tasks running, deployment: $deployment_status"
+            
+            # Check if deployment is successful
+            if [ "$running_count" = "$desired_count" ] && [ "$running_count" -gt 0 ]; then
+              echo "✅ ECS service deployment completed successfully!"
+              echo "Final status: $running_count tasks running (desired: $desired_count)"
+              break
+            fi
+            
+            # If this is the last attempt, show status and continue
+            if [ $attempt -eq $MAX_ATTEMPTS ]; then
+              echo "::warning::Deployment verification timed out after 5 minutes"
+              echo "Final status: $running_count/$desired_count tasks running"
+              aws ecs describe-services --cluster $CLUSTER_NAME --services $SERVICE_NAME \
+                --query "services[0].{status:status,runningCount:runningCount,desiredCount:desiredCount,deployments:deployments[*].{status:status,createdAt:createdAt}}" \
+                --output json
+              echo "::notice::Service may still be stabilizing. Check ECS console for details."
+              break
+            fi
+            
+            echo "Waiting 15 seconds before next check..."
+            sleep 15
+            attempt=$((attempt + 1))
+          done
           
       - name: Show deployment information
         run: |
