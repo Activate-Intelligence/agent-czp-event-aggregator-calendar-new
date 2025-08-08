@@ -428,7 +428,7 @@ def scrape_camera_schedule(api_token="2bb56bfb-58ce-4bfe-a945-61123158cde6"):
             table_data = process_table(table, base_url)
             all_data.extend(table_data)
 
-        call_webhook_with_success({
+        call_webhook_with_success(payload.get('id'),{
             "status": "inprogress",
             "data": {
                 "title": f"Processing the camera extraction",
@@ -1700,7 +1700,7 @@ def camera_main():
     api_token = "2bb56bfb-58ce-4bfe-a945-61123158cde6"
     data = scrape_camera_schedule(api_token=api_token)
 
-    call_webhook_with_success({
+    call_webhook_with_success(payload.get('id'),{
         "status": "inprogress",
         "data": {
             "title": f"Extracting the URLs from the camera resource",
@@ -1776,7 +1776,7 @@ def camera_main():
         calendar_sample = next(
             (item for item in data if item.get('content') == "Calendar entry"),
             None)
-        call_webhook_with_success({
+        call_webhook_with_success(payload.get('id'),{
             "status": "inprogress",
             "data": {
                 "title": f"Camera extraction continues",
@@ -1825,7 +1825,7 @@ def camera_main():
             entity_name = event_container.get('entity', f'Unknown entity (Entry {i+1})')
             print(f"[{i+1}/{total_top_level_entries}] Processing entry for: {entity_name}")
     
-            call_webhook_with_success({
+            call_webhook_with_success(payload.get('id'),{
                 "status": "inprogress",
                 "data": {
                     "title": f"Camera extraction is processing for each events",
@@ -1838,7 +1838,7 @@ def camera_main():
             elapsed = time.time() - start_time
     
             for event in normalized_events:
-                call_webhook_with_success({
+                call_webhook_with_success(payload.get('id'),{
                     "status": "inprogress",
                     "data": {
                         "title": f"Normalising the camera event ",
@@ -1878,7 +1878,7 @@ def camera_main():
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump({"data": filtered_events}, f, ensure_ascii=False, indent=2)
 
-        call_webhook_with_success({
+        call_webhook_with_success(payload.get('id'),{
             "status": "inprogress",
             "data": {
                 "title": f"Filtered events are now stored in json file",
@@ -1903,7 +1903,7 @@ def camera_main():
     input_file_path = "normalized_events.json"  # Output from your first script
     output_file_path = "grouped_events.json"  # The new desired grouped format
 
-    call_webhook_with_success({
+    call_webhook_with_success(payload.get('id'),{
         "status": "inprogress",
         "data": {
             "title": f"Extracted events are now grouped and formatted",
@@ -1920,7 +1920,7 @@ def camera_main():
     neo4j_password = "W0pumaSXNH7U2ZfsNPl4gB1tS4Iw1e-79LbKD7e05fk"
     json_file = "grouped_events.json"  # Your JSON file
 
-    call_webhook_with_success({
+    call_webhook_with_success(payload.get('id'),{
         "status": "inprogress",
         "data": {
             "title": f"Working on the Neo4j DB now",
@@ -1945,7 +1945,7 @@ def camera_main():
 
     try:
         # Sync events to Neo4j
-        call_webhook_with_success({
+        call_webhook_with_success(payload.get('id'),{
             "status": "inprogress",
             "data": {
                 "title": f"Syncing events to Neo4j",
