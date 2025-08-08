@@ -228,7 +228,7 @@ resource "aws_route53_record" "main" {
 #         Application Load Balancer    #
 ########################################
 resource "aws_lb" "main" {
-  name               = "${var.service_name}-${var.environment}-alb"
+  name               = "czp-cal-aggr-${var.environment}-alb"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
