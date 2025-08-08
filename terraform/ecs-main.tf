@@ -248,7 +248,7 @@ resource "aws_lb" "main" {
 }
 
 resource "aws_lb_target_group" "app" {
-  name        = "${var.service_name}-${var.environment}-tg"
+  name        = "czp-cal-aggr-${var.environment}-tg"
   port        = var.container_port
   protocol    = "HTTP"
   vpc_id      = data.aws_vpc.default.id
