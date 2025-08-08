@@ -23,27 +23,27 @@ uvicorn main:app --reload
 ### ECS Deployment (Current - Production Ready)
 ```bash
 # Build Docker image
-docker build -t agent-is-ai-news-aggregator .
+docker build -t agent-czp-event-aggregator-calendar .
 
 # Run locally with Docker
-docker run -p 8000:8000 agent-is-ai-news-aggregator
+docker run -p 8000:8000 agent-czp-event-aggregator-calendar
 
 # Deploy to ECS (automatic via GitHub Actions)
 git push origin main  # for dev environment
 git push origin prod-release  # for prod environment
 
 # Manual ECS operations
-aws ecs update-service --cluster agent-is-ai-news-aggregator-dev --service agent-is-ai-news-aggregator-dev --force-new-deployment
+aws ecs update-service --cluster agent-czp-event-aggregator-calendar-dev --service agent-czp-event-aggregator-calendar-dev --force-new-deployment
 
 # Check deployment status
-aws ecs describe-services --cluster agent-is-ai-news-aggregator-dev --services agent-is-ai-news-aggregator-dev
+aws ecs describe-services --cluster agent-czp-event-aggregator-calendar-dev --services agent-czp-event-aggregator-calendar-dev
 ```
 
 ### Current Deployment Status
-- **Load Balancer URL**: https://isp-ai-news-agg-dev.activate.bar
-- **API Documentation**: https://isp-ai-news-agg-dev.activate.bar/docs  
-- **Health Check**: https://isp-ai-news-agg-dev.activate.bar/status
-- **RSS Processing**: POST to `/execute` endpoint
+- **Load Balancer URL**: https://czp-event-aggregator-calendar.bar
+- **API Documentation**: https://czp-event-aggregator-calendar.bar/docs  
+- **Health Check**: https://czp-event-aggregator-calendar.bar/status
+- **Event Processing**: POST to `/execute` endpoint
 
 ### Legacy Lambda Packaging
 ```bash
@@ -56,12 +56,13 @@ python -c "import uvicorn, fastapi; print('✓ FastAPI and Uvicorn ready')"
 
 ## Architecture Overview
 
-This is an AI News Aggregator built with the oneForAll blueprint framework, **successfully deployed on AWS ECS** with unlimited execution time for RSS feed processing. The project uses multithreaded RSS processing to aggregate and filter AI/technology news from multiple sources.
+This is a **CZP Parliamentary Calendar Event Aggregator** built with the oneForAll blueprint framework, **successfully deployed on AWS ECS** with unlimited execution time for Parliamentary calendar processing. The project processes Italian Parliamentary events from Camera and Senato sources, enriches them with OpenAI, and stores them in Neo4j.
 
 ### 🚀 **Current Status: Production Ready on ECS**
-- ✅ **Deployed & Running**: https://isp-ai-news-agg-dev.activate.bar
+- ✅ **Deployed & Running**: https://czp-event-aggregator-calendar.bar
 - ✅ **Unlimited Execution Time**: No 15-minute Lambda limitations
-- ✅ **Multithreaded Processing**: 5 feed workers, 3 article workers per feed  
+- ✅ **Parliamentary Event Processing**: Camera and Senato calendar aggregation
+- ✅ **OpenAI Integration**: Event enrichment and normalization
 - ✅ **Auto-scaling**: Fargate containers with load balancer
 - ✅ **High Availability**: Load balancer with health checks
 
@@ -80,19 +81,26 @@ This is an AI News Aggregator built with the oneForAll blueprint framework, **su
 - Handles environment variable setup and validation
 
 **Agent Core (`smart_agent/src/agent/base_agent.py`)**
-- AI News Aggregator with RSS feed processing
-- Integrates with OpenAI API for content filtering and analysis
-- Multithreaded RSS processing with configurable worker pools
-- Neo4j database integration for article storage
+- CZP Parliamentary Calendar Event Aggregator
+- Integrates with OpenAI API for event processing and analysis
+- Conditional imports for heavy processing modules (ECS vs Lambda)
+- Neo4j database integration for calendar event storage
 - Webhook notifications for status updates
 - Environment mode switching (dev/prod) for prompt handling
 
-**RSS Feed Processor (`smart_agent/src/agent/rss_feed_processor.py`)**
-- Multithreaded RSS feed scraping and article processing
-- Support for multiple news sources (TechCrunch, BBC, The Verge, etc.)
-- Content extraction with fallback strategies
-- Article relevance filtering using OpenAI
-- Neo4j storage with duplicate detection
+**Camera Events Processor (`smart_agent/src/agent/camera_events.py`)**
+- Italian Camera (Lower House) parliamentary calendar scraping
+- Web scraping with BeautifulSoup and proxy API integration
+- Event extraction, date normalization, and OpenAI enrichment
+- Neo4j integration for storing Camera events with proper relationships
+- Week-based event filtering for current Parliamentary sessions
+
+**Senato Events Processor (`smart_agent/src/agent/senato_events.py`)**
+- Italian Senate (Upper House) commission calendar scraping
+- Commission URL extraction and individual calendar processing
+- OpenAI-powered event processing and multi-event splitting
+- Neo4j batch synchronization with duplicate detection
+- Target week filtering and date validation
 
 **Configuration System**
 - Agent configuration in `smart_agent/src/config/agent.json`
@@ -101,7 +109,7 @@ This is an AI News Aggregator built with the oneForAll blueprint framework, **su
 
 **API Routes (`smart_agent/src/routes/`)**
 - `/discover` - Agent capability discovery
-- `/execute` - Main agent execution endpoint (RSS processing)
+- `/execute` - Main agent execution endpoint (Parliamentary calendar processing)
 - `/abort` - Job termination
 - `/status` - Job status checking
 - `/logs` - Log file access
@@ -114,10 +122,10 @@ This is an AI News Aggregator built with the oneForAll blueprint framework, **su
 - Auto-scaling based on demand
 - CloudWatch logging and monitoring
 - ECR for container image storage
-- Supports unlimited execution time for RSS processing
+- Supports unlimited execution time for Parliamentary calendar processing
 
 **Legacy Lambda Deployment**
-- 15-minute execution limit (insufficient for full RSS processing)
+- 15-minute execution limit (insufficient for full Parliamentary calendar processing)
 - S3-based package storage in `533267084389-lambda-artifacts`
 - Automatic cleanup of old deployment packages
 - Kept for backward compatibility
@@ -138,8 +146,11 @@ This is an AI News Aggregator built with the oneForAll blueprint framework, **su
 - `smart_agent/main.py` - FastAPI application entry point
 - `Dockerfile` - Container configuration for ECS deployment
 - `smart_agent/lambda_handler.py` - Configuration loader with ECS/Lambda detection
-- `smart_agent/src/agent/base_agent.py` - Core agent logic with RSS processing
-- `smart_agent/src/agent/rss_feed_processor.py` - Multithreaded RSS processor
+- `smart_agent/src/agent/base_agent.py` - Core agent logic with Parliamentary calendar processing
+- `smart_agent/src/agent/camera_events.py` - Italian Camera (Lower House) event processor
+- `smart_agent/src/agent/senato_events.py` - Italian Senate (Upper House) event processor
+- `smart_agent/src/agent/get_prompt_from_git.py` - Dynamic prompt management system
+- `smart_agent/src/agent/prompt_extract.py` - YAML prompt file processor
 - `terraform/ecs-main.tf` - ECS Infrastructure as Code
 - `terraform/main.tf` - Legacy Lambda Infrastructure (deprecated)
 - `.github/workflows/deploy-ecs.yml` - ECS CI/CD pipeline
@@ -161,22 +172,25 @@ ECS/Lambda-specific:
 - `ENVIRONMENT` - Deployment environment (dev/prod)
 - `ECS_CONTAINER_METADATA_URI_V4` - ECS detection (automatic)
 
-RSS Processing:
-- Neo4j connection credentials (hardcoded in base_agent.py - should be moved to environment variables)
-- Multithreading configuration for feed and article workers
+Parliamentary Calendar Processing:
+- Neo4j connection credentials (hardcoded in camera_events.py and senato_events.py - should be moved to environment variables)
+- OpenAI processing configuration for event enrichment
+- Web scraping API tokens for external proxy services
 
 ## Development Notes
 
 ### ECS vs Lambda Detection
 - The application automatically detects if it's running in ECS or Lambda
-- ECS provides unlimited execution time, suitable for RSS processing workloads
+- ECS provides unlimited execution time, suitable for Parliamentary calendar processing workloads
 - Lambda is limited to 15 minutes, kept for backward compatibility
+- Heavy processing modules (BeautifulSoup, Parliamentary scrapers) are conditionally imported
 
-### RSS Feed Processing
-- Multithreaded architecture with configurable worker pools
-- Feed-level parallelism (5 workers) and article-level parallelism (3 workers per feed)
-- Built-in duplicate detection and content relevance filtering
-- Supports both standard RSS feeds and specialized sources like TLDR
+### Parliamentary Calendar Processing
+- **Camera Events**: Web scraping of Italian Camera parliamentary calendar with proxy API integration
+- **Senato Events**: Commission-by-commission calendar extraction from Senate website  
+- **OpenAI Integration**: Event enrichment, normalization, and multi-event splitting
+- **Neo4j Storage**: Graph database integration with proper Calendar → Date → Source → Event relationships
+- **Week Filtering**: Target week-based event filtering for current Parliamentary sessions
 
 ### Configuration Management
 - Environment mode switching for different behaviors in dev vs prod  
@@ -186,31 +200,36 @@ RSS Processing:
 
 ### Security and Best Practices
 - Neo4j credentials should be moved from hardcoded values to environment variables
+- OpenAI API keys exposed in code should be moved to environment variables
 - Comprehensive error handling and webhook notifications
 - Cleanup handlers ensure graceful shutdown and resource cleanup
 - Container security with non-root user in Dockerfile
 - All secrets managed through AWS SSM Parameter Store with encryption
 
 ### Performance & Scalability
-- **Multithreaded Architecture**: 5 concurrent feed workers, 3 article workers per feed
-- **Total Potential Threads**: Up to 15 concurrent article processing threads
-- **Processing Speed**: Significantly faster than sequential processing
+- **Parliamentary Calendar Processing**: Sequential processing of Camera and Senato sources
+- **OpenAI Integration**: Event-by-event processing with retry logic and rate limiting
+- **Neo4j Batch Operations**: Batch synchronization with duplicate detection
 - **Auto-scaling**: ECS Fargate automatically scales based on demand
 - **Resource Efficiency**: Pay only for actual usage with Fargate pricing
 
 ### Monitoring & Troubleshooting
-- **CloudWatch Logs**: `/ecs/agent-is-ai-news-aggregator-dev`
+- **CloudWatch Logs**: `/ecs/agent-czp-event-aggregator-calendar-dev`
 - **Health Checks**: Load balancer monitors container health
 - **DynamoDB Metrics**: Job state tracking and performance monitoring
 - **ECS Service Events**: Deployment and scaling event logs
+- **Neo4j Database**: Parliamentary calendar event storage and relationship monitoring
 
 ```bash
 # Monitor logs
-aws logs tail /ecs/agent-is-ai-news-aggregator-dev --follow
+aws logs tail /ecs/agent-czp-event-aggregator-calendar-dev --follow
 
 # Check service health  
-curl https://isp-ai-news-agg-dev.activate.bar/status
+curl https://czp-event-aggregator-calendar.bar/status
 
 # View ECS service events
-aws ecs describe-services --cluster agent-is-ai-news-aggregator-dev --services agent-is-ai-news-aggregator-dev --query "services[0].events[0:5]"
+aws ecs describe-services --cluster agent-czp-event-aggregator-calendar-dev --services agent-czp-event-aggregator-calendar-dev --query "services[0].events[0:5]"
+
+# Test Parliamentary calendar processing
+curl -X POST https://czp-event-aggregator-calendar.bar/execute
 ```

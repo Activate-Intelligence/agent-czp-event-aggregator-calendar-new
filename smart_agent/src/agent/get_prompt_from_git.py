@@ -8,11 +8,9 @@ import sys  # To allow for graceful exit
 repo_owner = 'Activate-Intelligence'
 repo_name = 'prompt-central'
 branch_name = 'main'  # Replace with the correct branch if necessary
-file_path_prefix = 'Intesa SanPaolo/AItribe_podcast/'  # Directory path in the GitHub repository "Parliamentary/Ministry/Reporter/"
+file_path_prefix = 'ENTER GITHUB FILE PATH'  # Directory path in the GitHub repository "Parliamentary/Ministry/Reporter/"
 file_names = [
-  'source_filtering_prompt.yaml',
-  'fact_extraction.yaml',
-  'source_scoring.yaml'
+  'ENTER FILE NAMES HERE'
 ]
 
 # Directory to save files locally

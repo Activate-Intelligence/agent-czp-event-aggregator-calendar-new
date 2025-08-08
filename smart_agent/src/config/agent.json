@@ -1,18 +1,19 @@
 {
-  "name": "IS - AI News Aggregator",
+  "name": "CZP Event Aggregator Calendar Agent", 
   "description": "Template for processing content blocks",
   "icon": "https://s3.amazonaws.com/flowxo-static/icons/flow.png",
-  "color": "#a495ed",
+  "color": "#a4953d",
   "capabilities": "Content processing and transformation",
   "applications": [
     "your_application_name"
   ],
   "maxThreads": 1,
-  "inputs": [],
+  "inputs": [
+  ],
   "outputs": [
     {
       "label": "output",
-      "type": "longText"
+      "type": "shortText"
     }
   ]
 }

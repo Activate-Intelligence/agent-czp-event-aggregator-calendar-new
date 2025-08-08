@@ -1,4 +1,4 @@
-name: Deploy agent-is-ai-news-aggregator ECS
+name: Deploy agent-czp-event-aggregator-calendar ECS
 
 on:
   push:
@@ -14,7 +14,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      TF_VAR_service_name: agent-is-ai-news-aggregator
+      TF_VAR_service_name: agent-czp-event-aggregator-calendar
       TF_VAR_aws_region: eu-west-2
       
     steps:
@@ -60,7 +60,7 @@ jobs:
               --name "$param_name" \
               --value "$param_value" \
               --type "$param_type" \
-              --tags Key=Name,Value="agent-is-ai-news-aggregator-$(basename $param_name)" Key=Environment,Value=$ENVIRONMENT Key=ManagedBy,Value=GitHubActions \
+              --tags Key=Name,Value="agent-czp-event-aggregator-calendar-$(basename $param_name)" Key=Environment,Value=$ENVIRONMENT Key=ManagedBy,Value=GitHubActions \
               --no-overwrite \
               2>/dev/null; then
               echo "✓ Created new parameter: $param_name"
@@ -77,7 +77,7 @@ jobs:
                 aws ssm add-tags-to-resource \
                   --resource-type "Parameter" \
                   --resource-id "$param_name" \
-                  --tags Key=Name,Value="agent-is-ai-news-aggregator-$(basename $param_name)" Key=Environment,Value=$ENVIRONMENT Key=ManagedBy,Value=GitHubActions \
+                  --tags Key=Name,Value="agent-czp-event-aggregator-calendar-$(basename $param_name)" Key=Environment,Value=$ENVIRONMENT Key=ManagedBy,Value=GitHubActions \
                   2>/dev/null || echo "Note: Could not update tags for $param_name (may already exist)"
               else
                 echo "❌ Failed to create/update parameter: $param_name"
@@ -105,7 +105,7 @@ jobs:
               fi
               
               # Create full parameter name with environment
-              param_name="/app/agent-is-ai-news-aggregator/$ENVIRONMENT/$key"
+              param_name="/app/agent-czp-event-aggregator-calendar/$ENVIRONMENT/$key"
               
               # Create or update the parameter
               create_or_update_parameter "$param_name" "$value" "$param_type"
@@ -121,7 +121,7 @@ jobs:
           ENVIRONMENT=${{ steps.env.outputs.environment }}
           echo "Verifying uploaded parameters..."
           aws ssm describe-parameters \
-            --parameter-filters Key=Name,Values="/app/agent-is-ai-news-aggregator/$ENVIRONMENT/" \
+            --parameter-filters Key=Name,Values="/app/agent-czp-event-aggregator-calendar/$ENVIRONMENT/" \
             --query 'Parameters[].{Name:Name,Type:Type,LastModifiedDate:LastModifiedDate}' \
             --output table
             
@@ -144,7 +144,7 @@ jobs:
           terraform -chdir=terraform-ecs init \
             -backend-config="region=eu-west-2" \
             -backend-config="bucket=533267084389-tf-state" \
-            -backend-config="key=aws/$ENVIRONMENT/agents/agent-is-ai-news-aggregator-ecs" \
+            -backend-config="key=aws/$ENVIRONMENT/agents/agent-czp-event-aggregator-calendar-ecs" \
             -backend-config="dynamodb_table=533267084389-tf-lock" \
             -backend-config="encrypt=true"
             
@@ -199,8 +199,8 @@ jobs:
       - name: Wait for ECS service deployment
         run: |
           ENVIRONMENT=${{ steps.env.outputs.environment }}
-          CLUSTER_NAME="agent-is-ai-news-aggregator-$ENVIRONMENT"
-          SERVICE_NAME="agent-is-ai-news-aggregator-$ENVIRONMENT"
+          CLUSTER_NAME="agent-czp-event-aggregator-calendar-$ENVIRONMENT"
+          SERVICE_NAME="agent-czp-event-aggregator-calendar-$ENVIRONMENT"
           
           echo "Waiting for ECS service deployment to complete (timeout: 10 minutes)..."
           # Wait up to 10 minutes (40 attempts * 15 seconds = 600 seconds)
@@ -225,4 +225,4 @@ jobs:
           echo "::notice title=ECS Service::$(terraform output -raw ecs_service_name)"
           echo "::notice title=DynamoDB Table::$(terraform output -raw dynamodb_table_name)"
           echo "::notice title=CloudWatch Logs::$(terraform output -raw cloudwatch_log_group)"
-          echo "::notice title=SSM Parameters::$(aws ssm describe-parameters --parameter-filters Key=Name,Values=/app/agent-is-ai-news-aggregator/${{ steps.env.outputs.environment }}/ --query 'Parameters[].Name' --output table)"
+          echo "::notice title=SSM Parameters::$(aws ssm describe-parameters --parameter-filters Key=Name,Values=/app/agent-czp-event-aggregator-calendar/${{ steps.env.outputs.environment }}/ --query 'Parameters[].Name' --output table)"

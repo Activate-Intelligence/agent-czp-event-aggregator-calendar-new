@@ -30,7 +30,7 @@ provider "aws" {
 variable "service_name" {
   description = "Name of the ECS service"
   type        = string
-  default     = "agent-is-ai-news-aggregator"
+  default     = "agent-czp-event-aggregator-calendar"
 }
 
 variable "aws_region" {
