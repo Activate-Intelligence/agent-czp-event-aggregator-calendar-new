@@ -417,24 +417,71 @@ resource "aws_iam_role" "ecs_task" {
   }
 }
 
-# Reference existing IAM policy for DynamoDB access (from Lambda deployment)
-data "aws_iam_policy" "dynamodb_rw" {
-  name = "${var.service_name}-${var.environment}-dynamodb-rw"
+# Create IAM policy for DynamoDB access for ECS tasks
+resource "aws_iam_policy" "ecs_dynamodb_rw" {
+  name = "${var.service_name}-${var.environment}-ecs-dynamodb-rw"
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect   = "Allow",
+      Action   = [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+        "dynamodb:DescribeTable"
+      ],
+      Resource = [
+        data.aws_dynamodb_table.agent_jobs.arn,
+        "${data.aws_dynamodb_table.agent_jobs.arn}/index/*"
+      ]
+    }]
+  })
+
+  tags = {
+    Name        = "${var.service_name}-${var.environment}-ecs-dynamodb-rw"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
 }
 
-# Reference existing IAM policy for SSM Parameter Store access (from Lambda deployment)
-data "aws_iam_policy" "ssm_parameter_read" {
-  name = "${var.service_name}-${var.environment}-ssm-parameter-read"
+# Create IAM policy for SSM Parameter Store access for ECS tasks
+resource "aws_iam_policy" "ecs_ssm_parameter_read" {
+  name = "${var.service_name}-${var.environment}-ecs-ssm-parameter-read"
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect = "Allow",
+      Action = [
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:GetParametersByPath",
+        "ssm:DescribeParameters"
+      ],
+      Resource = [
+        "arn:aws:ssm:${var.aws_region}:*:parameter/app/${var.service_name}/${var.environment}",
+        "arn:aws:ssm:${var.aws_region}:*:parameter/app/${var.service_name}/${var.environment}/*"
+      ]
+    }]
+  })
+
+  tags = {
+    Name        = "${var.service_name}-${var.environment}-ecs-ssm-parameter-read"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_task_dynamodb_rw" {
   role       = aws_iam_role.ecs_task.name
-  policy_arn = data.aws_iam_policy.dynamodb_rw.arn
+  policy_arn = aws_iam_policy.ecs_dynamodb_rw.arn
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_task_ssm_read" {
   role       = aws_iam_role.ecs_task.name
-  policy_arn = data.aws_iam_policy.ssm_parameter_read.arn
+  policy_arn = aws_iam_policy.ecs_ssm_parameter_read.arn
 }
 
 ########################################
