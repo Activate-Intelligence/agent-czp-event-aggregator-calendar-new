@@ -376,7 +376,7 @@ class Neo4jIntegration:
         print(f"Sync completed: Added {added_count} events")
         return added_count
 
-def scrape_camera_schedule(api_token="2bb56bfb-58ce-4bfe-a945-61123158cde6"):
+def scrape_camera_schedule(api_token="2bb56bfb-58ce-4bfe-a945-61123158cde6", job_id=None):
     """Main function to scrape the weekly schedule, detailed meeting information, and calendar"""
     print("Starting scraping...")
 
@@ -1699,7 +1699,7 @@ def camera_main(job_id=None):
     promptDownloader()
     # Use the provided API token for the calendar scraping
     api_token = "2bb56bfb-58ce-4bfe-a945-61123158cde6"
-    data = scrape_camera_schedule(api_token=api_token)
+    data = scrape_camera_schedule(api_token=api_token, job_id=job_id)
 
     if job_id:
         call_webhook_with_success(job_id, {
