@@ -527,7 +527,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_ssm_read" {
 #            CloudWatch Logs          #
 ########################################
 resource "aws_cloudwatch_log_group" "ecs" {
-  name              = "/ecs/${var.service_name}-${var.environment}"
+  name              = "/ecs/${var.service_name}-${var.environment}-${random_id.deployment.hex}"
   retention_in_days = 30
 
   tags = {
