@@ -603,7 +603,7 @@ def process_commission_events_with_gpt4o(commission_name, events):
 
         user_prompt = events_text
 
-        prompt_file_path = 'Prompt/SenatoEvents.yaml'
+        prompt_file_path = '/tmp/Prompt/SenatoEvents.yaml'
         replacements = {"user_prompt": user_prompt}
         system_prompt, user_prompt, model_params = extract_prompts(
             prompt_file_path, **replacements)

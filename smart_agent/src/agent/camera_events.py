@@ -1318,7 +1318,7 @@ def process_event_with_openai(event_data):
     try:
         event_data_model = json.dumps(event_data, ensure_ascii=False)
         print(f"Input: Event data Model:\n {event_data_model}\n\n")
-        prompt_file_path = 'Prompt/CameraEvents.yaml'
+        prompt_file_path = '/tmp/Prompt/CameraEvents.yaml'
         replacements = {"user_prompt": event_data_model}
         system_prompt, user_prompt, model_params = extract_prompts(
             prompt_file_path, **replacements)
