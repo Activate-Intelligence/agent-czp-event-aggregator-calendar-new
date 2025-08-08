@@ -240,8 +240,8 @@ resource "aws_lb" "main" {
 
   enable_deletion_protection = false
   
-  # Increase idle timeout for long-running RSS processing
-  idle_timeout = 3600  # 1 hour (default is 60 seconds)
+  # Reasonable idle timeout for calendar processing
+  idle_timeout = 900  # 15 minutes (sufficient for calendar processing)
 
   tags = {
     Name        = "${var.service_name}-${var.environment}-alb"
@@ -258,8 +258,8 @@ resource "aws_lb_target_group" "app" {
   vpc_id      = data.aws_vpc.default.id
   target_type = "ip"
   
-  # Increase deregistration delay for long-running requests
-  deregistration_delay = 3600  # 1 hour (default is 300 seconds)
+  # Reasonable deregistration delay for faster deployments
+  deregistration_delay = 300  # 5 minutes (default is 300 seconds)
 
   health_check {
     enabled             = true
