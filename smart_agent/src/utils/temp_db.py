@@ -6,8 +6,7 @@ import json
 from typing import Dict, List, Optional, Any
 
 # Get table name from environment variable set by Terraform
-# TABLE_NAME = os.environ.get("JOB_TABLE")
-TABLE_NAME = "agent-is-ai-news-aggregator-dev-jobs"
+TABLE_NAME = os.environ.get("JOB_TABLE")
 if not TABLE_NAME:
     # Fallback: construct table name from environment variables
     function_name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "unknown-agent")

@@ -12,7 +12,7 @@ def discover(id: str = Query(None, description="Task ID (optional for health che
     return ApiResponse(
       id="health-check",
       status="healthy",
-      data={"service": "agent-is-ai-news-aggregator", "message": "Agent is running"}
+      data={"service": "agent-czp-event-aggregator-calendar", "message": "Agent is running"}
     )
   return StatusController.get_status(id)
 

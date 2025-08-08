@@ -78,7 +78,7 @@ variable "image_tag" {
 variable "domain_name" {
   description = "Custom domain name for the ALB (optional)"
   type        = string
-  default     = "isp-ai-news-agg-dev.activate.bar"
+  default     = "czp-event-aggregator-calendar.bar"
 }
 
 variable "certificate_arn" {
@@ -140,7 +140,7 @@ data "aws_subnets" "default" {
 
 # Security group for ECS tasks
 resource "aws_security_group" "ecs_tasks" {
-  name        = "ai-news-${var.environment}-ecs"
+  name        = "${var.service_name}-${var.environment}-ecs"
   description = "Security group for ECS tasks"
   vpc_id      = data.aws_vpc.default.id
 
@@ -159,7 +159,7 @@ resource "aws_security_group" "ecs_tasks" {
   }
 
   tags = {
-    Name        = "ai-news-${var.environment}-ecs"
+    Name        = "${var.service_name}-${var.environment}-ecs"
     Environment = var.environment
     ManagedBy   = "Terraform"
     ServiceName = var.service_name
@@ -168,7 +168,7 @@ resource "aws_security_group" "ecs_tasks" {
 
 # Security group for ALB
 resource "aws_security_group" "alb" {
-  name        = "ai-news-${var.environment}-alb-sg"
+  name        = "${var.service_name}-${var.environment}-alb-sg"
   description = "Security group for Application Load Balancer"
   vpc_id      = data.aws_vpc.default.id
 
@@ -194,7 +194,7 @@ resource "aws_security_group" "alb" {
   }
 
   tags = {
-    Name        = "ai-news-${var.environment}-alb-sg"
+    Name        = "${var.service_name}-${var.environment}-alb-sg"
     Environment = var.environment
     ManagedBy   = "Terraform"
     ServiceName = var.service_name
@@ -228,7 +228,7 @@ resource "aws_route53_record" "main" {
 #         Application Load Balancer    #
 ########################################
 resource "aws_lb" "main" {
-  name               = "ai-news-${var.environment}-alb"
+  name               = "${var.service_name}-${var.environment}-alb"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
@@ -240,7 +240,7 @@ resource "aws_lb" "main" {
   idle_timeout = 3600  # 1 hour (default is 60 seconds)
 
   tags = {
-    Name        = "ai-news-${var.environment}-alb"
+    Name        = "${var.service_name}-${var.environment}-alb"
     Environment = var.environment
     ManagedBy   = "Terraform"
     ServiceName = var.service_name
@@ -248,7 +248,7 @@ resource "aws_lb" "main" {
 }
 
 resource "aws_lb_target_group" "app" {
-  name        = "ai-news-${var.environment}-tg"
+  name        = "${var.service_name}-${var.environment}-tg"
   port        = var.container_port
   protocol    = "HTTP"
   vpc_id      = data.aws_vpc.default.id
@@ -277,7 +277,7 @@ resource "aws_lb_target_group" "app" {
   }
 
   tags = {
-    Name        = "ai-news-${var.environment}-tg"
+    Name        = "${var.service_name}-${var.environment}-tg"
     Environment = var.environment
     ManagedBy   = "Terraform"
     ServiceName = var.service_name
