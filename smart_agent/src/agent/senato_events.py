@@ -771,19 +771,20 @@ def flatten_events(commission_data):
     return all_events
 
 
-def senato_main():
+def senato_main(job_id=None):
     """Main function to extract and save all commission calendars"""
     promptDownloader()
     # Extract commission URLs
     commission_urls = extract_commission_urls()
 
-    call_webhook_with_success(payload.get('id'),{
-        "status": "inprogress",
-        "data": {
-            "title": f"Extracting the URLs from the actual resource",
-            "info": "Processing",
-        },
-    })
+    if job_id:
+        call_webhook_with_success(job_id, {
+            "status": "inprogress",
+            "data": {
+                "title": f"Extracting the URLs from the actual resource",
+                "info": "Processing",
+            },
+        })
 
     if not commission_urls:
         print("No commission URLs found")
@@ -795,23 +796,25 @@ def senato_main():
     # Process each commission
     for commission_name, url in commission_urls.items():
         # Extract events for this commission
-        call_webhook_with_success(payload.get('id'),{
-            "status": "inprogress",
-            "data": {
-                "title": f"Process each commission in senato",
-                "info": "Processing",
-            },
-        })
+        if job_id:
+            call_webhook_with_success(job_id, {
+                "status": "inprogress",
+                "data": {
+                    "title": f"Process each commission in senato",
+                    "info": "Processing",
+                },
+            })
 
         events = scrape_commission_calendar(url, commission_name)
 
-        call_webhook_with_success(payload.get('id'),{
-            "status": "inprogress",
-            "data": {
-                "title": f"Extracting the senato events from the actual resource",
-                "info": "Processing",
-            },
-        })
+        if job_id:
+            call_webhook_with_success(job_id, {
+                "status": "inprogress",
+                "data": {
+                    "title": f"Extracting the senato events from the actual resource",
+                    "info": "Processing",
+                },
+            })
 
         # Add to our dictionary
         all_events[commission_name] = events
@@ -828,13 +831,14 @@ def senato_main():
 
     print(f"Saved all commission data to raw_data/all_commissions_raw.json")
 
-    call_webhook_with_success(payload.get('id'),{
-        "status": "inprogress",
-        "data": {
-            "title": f"Extraction is completed and stored in a json",
-            "info": "Processing",
-        },
-    })
+    if job_id:
+        call_webhook_with_success(job_id, {
+            "status": "inprogress",
+            "data": {
+                "title": f"Extraction is completed and stored in a json",
+                "info": "Processing",
+            },
+        })
 
     # Print summary
     total_events = sum(len(events) for events in all_events.values())
@@ -855,13 +859,14 @@ def senato_main():
         print("Error: Raw data file not found. Please run step1_scrape.py first.")
         return
 
-    call_webhook_with_success(payload.get('id'),{
-        "status": "inprogress",
-        "data": {
-            "title": f"Working on the Neo4j DB now.",
-            "info": "Processing",
-        },
-    })
+    if job_id:
+        call_webhook_with_success(job_id, {
+            "status": "inprogress",
+            "data": {
+                "title": f"Working on the Neo4j DB now.",
+                "info": "Processing",
+            },
+        })
 
     # Initialize Neo4j connection
     neo4j = Neo4jIntegration(neo4j_uri, neo4j_username, neo4j_password)
@@ -878,13 +883,14 @@ def senato_main():
         for commission_name, events in all_commissions.items():
             print(f"\n--- Processing {commission_name} ({len(events)} events) ---")
 
-            call_webhook_with_success(payload.get('id'),{
-                "status": "inprogress",
-                "data": {
-                    "title": f"Storing content to the Neo4j DB process is about to begin",
-                    "info": "Processing",
-                },
-            })
+            if job_id:
+                call_webhook_with_success(job_id, {
+                    "status": "inprogress",
+                    "data": {
+                        "title": f"Storing content to the Neo4j DB process is about to begin",
+                        "info": "Processing",
+                    },
+                })
 
             # Filter out 10:00 Assemblea events before processing
             filtered_events = []
@@ -904,24 +910,26 @@ def senato_main():
             print(f"Filtered out {len(events) - len(filtered_events)} Assemblea/SCONVOCATA events")
             events = filtered_events
 
-            call_webhook_with_success(payload.get('id'),{
-                "status": "inprogress",
-                "data": {
-                    "title": f"Extracting the events using GPT4.1",
-                    "info": "Processing",
-                },
-            })
+            if job_id:
+                call_webhook_with_success(job_id, {
+                    "status": "inprogress",
+                    "data": {
+                        "title": f"Extracting the events using GPT4.1",
+                        "info": "Processing",
+                    },
+                })
 
             # Step 1: Process this commission's events with GPT-4o
             processed_events = process_commission_events_with_gpt4o(commission_name, events)
 
-            call_webhook_with_success(payload.get('id'),{
-                "status": "inprogress",
-                "data": {
-                    "title": f"Events are extracted for that commission.",
-                    "info": "Processing",
-                },
-            })
+            if job_id:
+                call_webhook_with_success(job_id, {
+                    "status": "inprogress",
+                    "data": {
+                        "title": f"Events are extracted for that commission.",
+                        "info": "Processing",
+                    },
+                })
 
             # Print summary of the processing
             original_count = len(events)
@@ -933,13 +941,14 @@ def senato_main():
 
             # Step 2: Immediately sync these events to Neo4j
             print(f"Syncing {len(processed_events)} events for {commission_name} to Neo4j...")
-            call_webhook_with_success(payload.get('id'),{
-                "status": "inprogress",
-                "data": {
-                    "title": f"Syncing to Neo4j",
-                    "info": "Processing",
-                },
-            })
+            if job_id:
+                call_webhook_with_success(job_id, {
+                    "status": "inprogress",
+                    "data": {
+                        "title": f"Syncing to Neo4j",
+                        "info": "Processing",
+                    },
+                })
 
             added_count = neo4j.batch_sync_events(processed_events)
             total_synced += added_count
@@ -955,13 +964,14 @@ def senato_main():
             # Save to the combined data
             all_processed_events[commission_name] = processed_events
 
-            call_webhook_with_success(payload.get('id'),{
-                "status": "inprogress",
-                "data": {
-                    "title": f"Save all senato events in processed json",
-                    "info": "Processing",
-                },
-            })
+            if job_id:
+                call_webhook_with_success(job_id, {
+                    "status": "inprogress",
+                    "data": {
+                        "title": f"Save all senato events in processed json",
+                        "info": "Processing",
+                    },
+                })
 
             print(f"Completed processing {commission_name}. Added {added_count} events to Neo4j.")
 

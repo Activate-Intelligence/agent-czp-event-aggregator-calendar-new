@@ -406,7 +406,7 @@ def base_agent(payload):
         # Process whichever source needs processing
         if out_s == True:
             print(f"Processing Senato for week: {current_week}")
-            senato_main()
+            senato_main(payload.get('id'))
             call_webhook_with_success(payload.get('id'), {
                 "status": "inprogress",
                 "data": {
