@@ -10,19 +10,9 @@ from .get_prompt_from_git import main as promptDownloader
 import json
 from .agent_config import fetch_agent_config
 import time
-# Heavy processing modules - dynamically check availability
-def check_heavy_modules_available():
-    """Check if heavy processing modules are available by attempting lazy import"""
-    try:
-        from .camera_events import camera_main
-        from .senato_events import senato_main
-        return True, camera_main, senato_main
-    except ImportError as e:
-        print(f"Heavy processing modules not available: {e}")
-        return False, None, None
-
-# Initial check - but we'll re-check dynamically when needed
-HEAVY_MODULES_AVAILABLE, camera_main, senato_main = check_heavy_modules_available()
+# ECS-only environment - import processing modules directly
+from .camera_events import camera_main
+from .senato_events import senato_main
 
 import requests
 from io import BytesIO
@@ -32,14 +22,8 @@ from dateutil import tz
 from dotenv import load_dotenv
 import concurrent.futures
 
-# Heavy imports - only import when available  
-try:
-    from bs4 import BeautifulSoup
-    HEAVY_IMPORTS_AVAILABLE = True
-except ImportError:
-    print("Heavy imports not available (Lambda mode)")
-    BeautifulSoup = None
-    HEAVY_IMPORTS_AVAILABLE = False
+# ECS environment - import BeautifulSoup directly
+from bs4 import BeautifulSoup
 
 # Configuration flag - Change this to switch between dev and prod modes
 ENVIRONMENT_MODE = "dev"  # Change to "prod" for production or dev for development
@@ -58,11 +42,6 @@ load_dotenv()  # This will load environment variables from the .env file
 logger = Logger()
 
 def check_senato():
-    # Check if BeautifulSoup is available (ECS mode)
-    if not HEAVY_IMPORTS_AVAILABLE or BeautifulSoup is None:
-        print("BeautifulSoup not available - skipping senato check")
-        return True, "unknown-week-lambda"
-        
     # Get current week from website
     response = requests.get(
         "https://www.senato.it/CLS/pub/quadro/permanenti-giunte")
@@ -92,11 +71,6 @@ def check_senato():
 
 def check_camera():
     try:
-        # Check if BeautifulSoup is available (ECS mode)
-        if not HEAVY_IMPORTS_AVAILABLE or BeautifulSoup is None:
-            print("BeautifulSoup not available - skipping camera check")
-            return True, "unknown-week-camera-lambda"
-            
         # Go to the weekly tab using the correct URL
         weekly_url = "https://www.camera.it/leg19/76?active_tab_3806=3811"
         print(f"Accessing weekly tab: {weekly_url}")
@@ -273,34 +247,24 @@ def base_agent(payload):
             f.write(current_week_camera)
         print("Camera week saved to current_week_camera.txt")
 
-        # Dynamic check for heavy processing modules availability (ECS mode)
-        modules_available, camera_fn, senato_fn = check_heavy_modules_available()
+        # ECS environment - run calendar processing directly
+        senato_main()
+        call_webhook_with_success(payload.get('id'), {
+            "status": "inprogress",
+            "data": {
+                "title": f"senato_main() is done",
+                "info": "Processing",
+            },
+        })
         
-        if not modules_available:
-            msg = "Calendar processing modules not available in Lambda mode. Use ECS for full processing."
-            resp = {"name": "output", "type": "shortText", "data": msg}
-            return resp
-       
-        # Call the heavy processing functions
-        if senato_fn:
-            senato_fn()
-            call_webhook_with_success(payload.get('id'), {
-                "status": "inprogress",
-                "data": {
-                    "title": f"senato_main() is done",
-                    "info": "Processing",
-                },
-            })
-        
-        if camera_fn:
-            camera_fn()
-            call_webhook_with_success(payload.get('id'), {
-                "status": "inprogress",
-                "data": {
-                    "title": f"camera_main() is done",
-                    "info": "Processing",
-                },
-            })
+        camera_main()
+        call_webhook_with_success(payload.get('id'), {
+            "status": "inprogress",
+            "data": {
+                "title": f"camera_main() is done",
+                "info": "Processing",
+            },
+        })
         
         
         

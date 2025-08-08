@@ -7,52 +7,15 @@ from dotenv import load_dotenv
 from .src.routes import discover, execute, abort, status, logs
 from .src.utils.cleanup import setup_cleanup_handlers
 
-# Check if running in ECS and load parameters
-is_ecs = os.environ.get('ECS_CONTAINER_METADATA_URI_V4') is not None
-print(f"Environment check - ECS: {is_ecs}, LOCAL_RUN: {os.environ.get('LOCAL_RUN')}")
+# Load ECS configuration
+from . import config_loader
 
-if is_ecs and not os.environ.get("LOCAL_RUN"):
-    print("ECS environment detected - loading SSM parameters...")
-    try:
-        import boto3
-        aws_region = os.environ.get('AWS_REGION', 'eu-west-2')
-        agent_name = os.environ.get('AGENT_NAME', 'agent-czp-event-aggregator-calendar')
-        environment = os.environ.get('ENVIRONMENT', 'dev')
-        parameter_prefix = os.environ.get('PARAMETER_PREFIX', f'/app/{agent_name}/{environment}')
-        parameter_prefix = os.path.expandvars(parameter_prefix)
-        
-        print(f"Loading parameters from: {parameter_prefix}")
-        
-        ssm_client = boto3.client('ssm', region_name=aws_region)
-        paginator = ssm_client.get_paginator('get_parameters_by_path')
-        parameters = {}
-        
-        # Load all parameters under the prefix
-        for page in paginator.paginate(Path=parameter_prefix, Recursive=True, WithDecryption=True):
-            for param in page['Parameters']:
-                # Extract the key name (everything after the prefix)
-                key = param['Name'].replace(f"{parameter_prefix}/", "")
-                parameters[key] = param['Value']
-                
-        print(f"Found {len(parameters)} parameters in Parameter Store")
-        
-        # Set ALL parameters as environment variables
-        for param_name, param_value in parameters.items():
-            # Convert parameter name to uppercase for environment variable
-            env_var_name = param_name.upper()
-            os.environ[env_var_name] = param_value
-            print(f"Set environment variable: {env_var_name}")
-            
-        print(f"Successfully loaded {len(parameters)} parameters from Parameter Store")
-        print(f"ALLOW_ORIGINS after loading: {os.environ.get('ALLOW_ORIGINS', 'NOT_SET')}")
-        
-    except Exception as e:
-        print(f"Error loading SSM parameters: {e}")
-else:
-    print("Skipping parameter loading - either not ECS or LOCAL_RUN is set")
+# ECS environment - configuration already loaded by config_loader
+print(f"ALLOW_ORIGINS after loading: {os.environ.get('ALLOW_ORIGINS', 'NOT_SET')}")
 
-# Add dot env (fallback for local development)
-load_dotenv()
+# Add dot env (fallback for local development only)
+if os.environ.get("LOCAL_RUN"):
+    load_dotenv()
 
 # Create App
 app = FastAPI()

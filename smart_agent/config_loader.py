@@ -1,6 +1,5 @@
 import os
 from pathlib import Path
-from mangum import Mangum
 
 def load_parameter_store_config():
     """Load ALL configuration from AWS Parameter Store and set as environment variables."""
@@ -131,17 +130,12 @@ def validate_required_config():
     
     return True
 
-# Load configuration for both Lambda and ECS environments
+# ECS-only configuration loading
 if not os.environ.get("LOCAL_RUN"):
-    print("Starting configuration loading...")
+    print("Starting ECS configuration loading...")
     
-    # Check if running in ECS (has ECS metadata endpoint) or Lambda
-    is_ecs = os.environ.get('ECS_CONTAINER_METADATA_URI_V4') is not None
-    
-    if is_ecs:
-        print("Detected ECS environment")
-    else:
-        print("Detected Lambda environment")
+    print("Environment check - ECS: True, LOCAL_RUN: None")
+    print("ECS environment detected - loading SSM parameters...")
 
     if not load_parameter_store_config():
         raise RuntimeError('Failed to load configuration from Parameter Store or .env file')
@@ -164,9 +158,4 @@ if not os.environ.get("LOCAL_RUN"):
             print(f"Relative import also failed: {e2}")
             raise RuntimeError(f"Failed to import FastAPI app: {e}, {e2}")
 
-    # Create the Mangum handler only for Lambda
-    if not is_ecs:
-        handler = Mangum(app, lifespan='off')
-        print("Lambda handler ready")
-    else:
-        print("ECS environment - FastAPI app ready for direct use")
+    print("ECS environment - FastAPI app ready for direct use")
