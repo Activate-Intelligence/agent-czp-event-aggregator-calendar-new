@@ -8,10 +8,13 @@ import sys  # To allow for graceful exit
 repo_owner = 'Activate-Intelligence'
 repo_name = 'prompt-central'
 branch_name = 'main'  # Replace with the correct branch if necessary
-file_path_prefix = 'ENTER GITHUB FILE PATH'  # Directory path in the GitHub repository "Parliamentary/Ministry/Reporter/"
-file_names = [
-  'ENTER FILE NAMES HERE'
-]
+# file_path_prefix = 'ENTER GITHUB FILE PATH'  # Directory path in the GitHub repository "Parliamentary/Ministry/Reporter/"
+# file_names = [
+#   'ENTER FILE NAMES HERE'
+# ]
+file_path_prefix = 'Parliamentary/Calendar/'  # Directory path in the GitHub repository "Parliamentary/Ministry/Reporter/"
+
+file_names = ['CameraEvents.yaml', 'SenatoEvents.yaml']
 
 # Directory to save files locally
 save_directory = "/tmp/Prompt"
