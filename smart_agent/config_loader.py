@@ -144,18 +144,4 @@ if not os.environ.get("LOCAL_RUN"):
         print("Warning: Some required configuration is missing, but continuing...")
 
     print("Configuration loaded successfully")
-
-    # Import the FastAPI app after configuration is loaded
-    try:
-        from smart_agent.main import app  # noqa: E402
-        print("Successfully imported FastAPI app")
-    except ImportError as e:
-        print(f"Import error: {e}")
-        try:
-            from .main import app  # noqa: E402
-            print("Successfully imported FastAPI app (relative import)")
-        except ImportError as e2:
-            print(f"Relative import also failed: {e2}")
-            raise RuntimeError(f"Failed to import FastAPI app: {e}, {e2}")
-
-    print("ECS environment - FastAPI app ready for direct use")
+    print("ECS environment - configuration ready")
