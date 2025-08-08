@@ -5,7 +5,7 @@ from openai import OpenAI
 import openai
 from .prompt_extract import extract_prompts
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from .get_prompt_from_git import main as promptDownloader
 import json
 from .agent_config import fetch_agent_config
@@ -25,6 +25,9 @@ import concurrent.futures
 # ECS environment - import BeautifulSoup directly
 from bs4 import BeautifulSoup
 
+# Import Neo4j for database checking
+from neo4j import GraphDatabase
+
 # Configuration flag - Change this to switch between dev and prod modes
 ENVIRONMENT_MODE = "dev"  # Change to "prod" for production or dev for development
 
@@ -36,79 +39,184 @@ def get_openai_client():
 
 load_dotenv()  # This will load environment variables from the .env file
 
-
 # OpenAI client is initialized lazily via get_openai_client() function above
 
 logger = Logger()
 
-def check_senato():
-    # Get current week from website
-    response = requests.get(
-        "https://www.senato.it/CLS/pub/quadro/permanenti-giunte")
-    soup = BeautifulSoup(response.content, 'html.parser')
-    current_week = soup.find('div',
-                             class_='sxWideComm').find('h2').text.strip()
+class Neo4jWeekChecker:
+    """Helper class to check if a week has been processed in Neo4j"""
+    
+    def __init__(self):
+        # Neo4j Configuration (same as in senato_events.py)
+        self.uri = "neo4j+s://c94a0c28.databases.neo4j.io"
+        self.username = "neo4j"
+        self.password = "W0pumaSXNH7U2ZfsNPl4gB1tS4Iw1e-79LbKD7e05fk"
+        self.driver = None
+    
+    def connect(self):
+        """Establish connection to Neo4j"""
+        if not self.driver:
+            self.driver = GraphDatabase.driver(self.uri, auth=(self.username, self.password))
+    
+    def close(self):
+        """Close Neo4j connection"""
+        if self.driver:
+            self.driver.close()
+            self.driver = None
+    
+    def get_next_monday_friday(self):
+        """Get the next Monday-Friday range (the week we want events for)"""
+        today = datetime.now().date()
+        
+        # Find next Monday
+        days_until_monday = (7 - today.weekday()) % 7
+        if days_until_monday == 0 and today.weekday() != 0:  # If today is not Monday
+            days_until_monday = 7
+        elif today.weekday() == 0:  # If today is Monday
+            days_until_monday = 0
+        
+        monday = today + timedelta(days=days_until_monday)
+        friday = monday + timedelta(days=4)
+        
+        return monday, friday
+    
+    def check_events_exist_for_week(self, source_type=None):
+        """
+        Check if events exist for the target week in Neo4j
+        
+        Args:
+            source_type: Optional filter by source type ('Senato' or 'Camera')
+        
+        Returns:
+            tuple: (has_events: bool, event_count: int, week_string: str)
+        """
+        self.connect()
+        
+        try:
+            monday, friday = self.get_next_monday_friday()
+            monday_str = monday.strftime("%Y-%m-%d")
+            friday_str = friday.strftime("%Y-%m-%d")
+            week_string = f"Settimana dal {monday.strftime('%-d %B')} al {friday.strftime('%-d %B %Y')}"
+            
+            with self.driver.session() as session:
+                # Build the query based on source type
+                if source_type:
+                    query = """
+                    MATCH (source:Calendar_Source)-[:HAS_EVENT]->(event:Event)
+                    WHERE event.date >= $monday_str 
+                    AND event.date <= $friday_str
+                    AND source.type = $source_type
+                    RETURN count(event) as event_count
+                    """
+                    result = session.run(query, 
+                                       monday_str=monday_str, 
+                                       friday_str=friday_str,
+                                       source_type=source_type)
+                else:
+                    query = """
+                    MATCH (event:Event)
+                    WHERE event.date >= $monday_str 
+                    AND event.date <= $friday_str
+                    RETURN count(event) as event_count
+                    """
+                    result = session.run(query, 
+                                       monday_str=monday_str, 
+                                       friday_str=friday_str)
+                
+                record = result.single()
+                event_count = record["event_count"] if record else 0
+                
+                print(f"Found {event_count} {source_type or 'total'} events for week {monday_str} to {friday_str}")
+                
+                return event_count > 0, event_count, week_string
+                
+        except Exception as e:
+            print(f"Error checking Neo4j for week events: {e}")
+            # If there's an error, return False to allow processing
+            return False, 0, ""
+        finally:
+            self.close()
+    
+    def clear_week_events(self, source_type=None):
+        """
+        Optional: Clear events for a specific week if needed for re-processing
+        
+        Args:
+            source_type: Optional filter by source type ('Senato' or 'Camera')
+        """
+        self.connect()
+        
+        try:
+            monday, friday = self.get_next_monday_friday()
+            monday_str = monday.strftime("%Y-%m-%d")
+            friday_str = friday.strftime("%Y-%m-%d")
+            
+            with self.driver.session() as session:
+                if source_type:
+                    query = """
+                    MATCH (source:Calendar_Source)-[:HAS_EVENT]->(event:Event)
+                    WHERE event.date >= $monday_str 
+                    AND event.date <= $friday_str
+                    AND source.type = $source_type
+                    DETACH DELETE event
+                    """
+                    session.run(query, 
+                              monday_str=monday_str, 
+                              friday_str=friday_str,
+                              source_type=source_type)
+                else:
+                    query = """
+                    MATCH (event:Event)
+                    WHERE event.date >= $monday_str 
+                    AND event.date <= $friday_str
+                    DETACH DELETE event
+                    """
+                    session.run(query, 
+                              monday_str=monday_str, 
+                              friday_str=friday_str)
+                
+                print(f"Cleared {source_type or 'all'} events for week {monday_str} to {friday_str}")
+                
+        except Exception as e:
+            print(f"Error clearing events: {e}")
+        finally:
+            self.close()
 
-    # Get stored week from file
-    stored_week = None
-    if os.path.exists("current_week.txt"):
-        with open("current_week.txt", 'r') as f:
-            stored_week = f.read().strip()
 
-    print(f"Current week: {current_week}")
-    print(f"Stored week: {stored_week}")
-
-    # Check if same
-    if current_week == stored_week:
-        print("Already processed this week")
-        return False, current_week
+def check_senato_neo4j():
+    """Check if Senato events for the target week exist in Neo4j"""
+    checker = Neo4jWeekChecker()
+    has_events, event_count, week_string = checker.check_events_exist_for_week(source_type='Senato')
+    
+    if has_events:
+        print(f"Already processed Senato for week: {week_string} ({event_count} events found)")
+        return False, week_string
     else:
-        print("New week! Processing...")
-        # Save current week
+        print(f"No Senato events found for week: {week_string}. Processing needed.")
+        return True, week_string
 
-    return True, current_week
+
+def check_camera_neo4j():
+    """Check if Camera events for the target week exist in Neo4j"""
+    checker = Neo4jWeekChecker()
+    has_events, event_count, week_string = checker.check_events_exist_for_week(source_type='Camera')
+    
+    if has_events:
+        print(f"Already processed Camera for week: {week_string} ({event_count} events found)")
+        return False, week_string
+    else:
+        print(f"No Camera events found for week: {week_string}. Processing needed.")
+        return True, week_string
+
+
+def check_senato():
+    """Legacy function - now uses Neo4j instead of web scraping"""
+    return check_senato_neo4j()
 
 
 def check_camera():
-    try:
-        # Go to the weekly tab using the correct URL
-        weekly_url = "https://www.camera.it/leg19/76?active_tab_3806=3811"
-        print(f"Accessing weekly tab: {weekly_url}")
-
-        response = requests.get(weekly_url)
-        soup = BeautifulSoup(response.content, 'html.parser')
-
-        # Look for the week text
-        week_text = soup.find(string=lambda text: text and 'Settimana dal' in
-                              text and '2025' in text)
-
-        if week_text:
-            current_week_camera = week_text.strip()
-            print(f"Found camera week: {current_week_camera}")
-        else:
-            print("Could not find week information in weekly tab")
-
-        # Get stored week from file
-        stored_week_camera = None
-        if os.path.exists("current_week_camera.txt"):
-            with open("current_week_camera.txt", 'r') as f:
-                stored_week_camera = f.read().strip()
-
-        print(f"Current camera week: {current_week_camera}")
-        print(f"Stored camera week: {stored_week_camera}")
-
-        if current_week_camera == stored_week_camera:
-            print("Already processed this camera week")
-            return False, current_week_camera
-        else:
-            print("New camera week! Processing...")
-            # with open("current_week_camera.txt", 'w') as f:
-            #     f.write(current_week_camera)
-            return True, current_week_camera
-
-    except Exception as e:
-        print(f"Error: {e}")
-        return True
+    """Legacy function - now uses Neo4j instead of web scraping"""
+    return check_camera_neo4j()
 
 
 def send_post_request(org, agent):
@@ -205,71 +313,79 @@ def base_agent(payload):
             'request_id', f"req-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
         print(f"Request ID: {request_id}")
         
-        
-        # CHECK SENATO HAS NEW UPDATED CALENDAR.
-        out_s, current_week = check_senato()
-        print(f"Check Senato {out_s, current_week}")
+        # CHECK SENATO HAS EVENTS FOR TARGET WEEK IN NEO4J
+        out_s, current_week = check_senato_neo4j()
+        print(f"Check Senato in Neo4j: {out_s}, {current_week}")
 
         call_webhook_with_success(payload.get('id'), {
             "status": "inprogress",
             "data": {
-                "title": f"Checking if Senato Calendar is updated.",
+                "title": f"Checking if Senato events exist in database for target week.",
                 "info": "Processing",
             },
         })
 
-        # CHECK CAMERA HAS NEW UPDATED CALENDAR.
-        out_c, current_week_camera = check_camera()
-        print(f"Check Senato {out_c, current_week_camera}")
+        # CHECK CAMERA HAS EVENTS FOR TARGET WEEK IN NEO4J
+        out_c, current_week_camera = check_camera_neo4j()
+        print(f"Check Camera in Neo4j: {out_c}, {current_week_camera}")
 
         call_webhook_with_success(payload.get('id'), {
             "status": "inprogress",
             "data": {
-                "title": f"checking if Camera Calendar is updated.",
+                "title": f"Checking if Camera events exist in database for target week.",
                 "info": "Processing",
             },
         })
 
         print(f"DEBUG: out_s = {out_s}, out_c = {out_c}")
-        # Option 3: If either is False
-        if out_s == False or out_c == False:
+        
+        # If both sources already have events for the target week
+        if out_s == False and out_c == False:
             return {
                 "name": "output",
                 "type": "shortText",
-                "data": "Already processed this week"
+                "data": f"Already processed both Senato and Camera for week: {current_week}"
             }
-
-        with open("current_week.txt", 'w') as f:
-            f.write(current_week)
-        print("Week saved to current_week.txt")
-
-        with open("current_week_camera.txt", 'w') as f:
-            f.write(current_week_camera)
-        print("Camera week saved to current_week_camera.txt")
-
-        # ECS environment - run calendar processing directly
-        senato_main()
-        call_webhook_with_success(payload.get('id'), {
-            "status": "inprogress",
-            "data": {
-                "title": f"senato_main() is done",
-                "info": "Processing",
-            },
-        })
         
-        camera_main()
-        call_webhook_with_success(payload.get('id'), {
-            "status": "inprogress",
-            "data": {
-                "title": f"camera_main() is done",
-                "info": "Processing",
-            },
-        })
+        # Process whichever source needs processing
+        if out_s == True:
+            print(f"Processing Senato for week: {current_week}")
+            senato_main()
+            call_webhook_with_success(payload.get('id'), {
+                "status": "inprogress",
+                "data": {
+                    "title": f"senato_main() completed",
+                    "info": "Processing",
+                },
+            })
+        else:
+            print(f"Skipping Senato - already has {current_week} in database")
         
+        if out_c == True:
+            print(f"Processing Camera for week: {current_week_camera}")
+            camera_main()
+            call_webhook_with_success(payload.get('id'), {
+                "status": "inprogress",
+                "data": {
+                    "title": f"camera_main() completed",
+                    "info": "Processing",
+                },
+            })
+        else:
+            print(f"Skipping Camera - already has {current_week_camera} in database")
         
+        # Prepare response message
+        processed_items = []
+        if out_s == True:
+            processed_items.append("Senato")
+        if out_c == True:
+            processed_items.append("Camera")
         
-
-        msg = "Calendar Agent Task Completed Successfully"
+        if processed_items:
+            msg = f"Calendar Agent Task Completed - Processed: {', '.join(processed_items)} for week {current_week}"
+        else:
+            msg = f"Calendar Agent Task Completed - No processing needed, week {current_week} already in database"
+        
         resp = {"name": "output", "type": "shortText", "data": msg}
         return resp
 
@@ -277,3 +393,16 @@ def base_agent(payload):
         print(f"Error in base_agent: {e}")
         # raise call_webhook_with_error(str(e), 500) # OLD VERSION SINGLE THREADED
         call_webhook_with_error(payload.get('id'), str(e), 500) # MULTI THREADED
+
+
+# # Optional: Add a utility function to force re-processing if needed
+# def force_reprocess_week(source_type=None):
+#     """
+#     Utility function to clear a week's events and force re-processing
+    
+#     Args:
+#         source_type: 'Senato', 'Camera', or None for both
+#     """
+#     checker = Neo4jWeekChecker()
+#     checker.clear_week_events(source_type)
+#     print(f"Cleared {source_type or 'all'} events for target week. Next run will reprocess.")
