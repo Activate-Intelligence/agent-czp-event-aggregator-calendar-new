@@ -10,16 +10,19 @@ from .get_prompt_from_git import main as promptDownloader
 import json
 from .agent_config import fetch_agent_config
 import time
-# Heavy processing modules - only import when running in ECS
-try:
-    from .camera_events import camera_main
-    from .senato_events import senato_main
-    HEAVY_MODULES_AVAILABLE = True
-except ImportError:
-    print("Heavy processing modules not available (Lambda mode)")
-    HEAVY_MODULES_AVAILABLE = False
-    camera_main = None
-    senato_main = None
+# Heavy processing modules - dynamically check availability
+def check_heavy_modules_available():
+    """Check if heavy processing modules are available by attempting lazy import"""
+    try:
+        from .camera_events import camera_main
+        from .senato_events import senato_main
+        return True, camera_main, senato_main
+    except ImportError as e:
+        print(f"Heavy processing modules not available: {e}")
+        return False, None, None
+
+# Initial check - but we'll re-check dynamically when needed
+HEAVY_MODULES_AVAILABLE, camera_main, senato_main = check_heavy_modules_available()
 
 import requests
 from io import BytesIO
@@ -270,15 +273,17 @@ def base_agent(payload):
             f.write(current_week_camera)
         print("Camera week saved to current_week_camera.txt")
 
-        # Only run heavy processing if modules are available (ECS mode)
-        if not HEAVY_MODULES_AVAILABLE:
+        # Dynamic check for heavy processing modules availability (ECS mode)
+        modules_available, camera_fn, senato_fn = check_heavy_modules_available()
+        
+        if not modules_available:
             msg = "Calendar processing modules not available in Lambda mode. Use ECS for full processing."
             resp = {"name": "output", "type": "shortText", "data": msg}
             return resp
        
-        # Call the heavy processing functions only if they're available
-        if senato_main:
-            senato_main()
+        # Call the heavy processing functions
+        if senato_fn:
+            senato_fn()
             call_webhook_with_success(payload.get('id'), {
                 "status": "inprogress",
                 "data": {
@@ -287,8 +292,8 @@ def base_agent(payload):
                 },
             })
         
-        if camera_main:
-            camera_main()
+        if camera_fn:
+            camera_fn()
             call_webhook_with_success(payload.get('id'), {
                 "status": "inprogress",
                 "data": {
