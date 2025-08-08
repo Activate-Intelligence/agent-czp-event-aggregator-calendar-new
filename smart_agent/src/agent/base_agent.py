@@ -28,6 +28,16 @@ from bs4 import BeautifulSoup
 # Configuration flag - Change this to switch between dev and prod modes
 ENVIRONMENT_MODE = "dev"  # Change to "prod" for production or dev for development
 
+# Configuration for which week to check
+# IMPORTANT: Set this based on when your agent runs:
+# - If agent runs during the week to process current week: CHECK_CURRENT_WEEK = True
+# - If agent runs Sunday night to prepare next week: CHECK_CURRENT_WEEK = False
+# 
+# Today is Friday Aug 8, 2025:
+# - CHECK_CURRENT_WEEK = True  → checks Aug 4-8, 2025 (this week)
+# - CHECK_CURRENT_WEEK = False → checks Aug 11-15, 2025 (next week)
+CHECK_CURRENT_WEEK = True  # Set to True to check current week's events
+
 def get_openai_client():
     """Get OpenAI client, initializing it lazily when first needed."""
     openai_api_key = os.environ.get("OPENAI_API_KEY")
@@ -79,12 +89,24 @@ class Neo4jWeekChecker:
         
         return monday, friday
     
-    def check_events_exist_for_week(self, source_type=None):
+    def get_current_week_monday_friday(self):
+        """Get the current week's Monday-Friday range"""
+        today = datetime.now().date()
+        
+        # Find this week's Monday
+        days_since_monday = today.weekday()  # 0 = Monday, 4 = Friday
+        monday = today - timedelta(days=days_since_monday)
+        friday = monday + timedelta(days=4)
+        
+        return monday, friday
+    
+    def check_events_exist_for_week(self, source_type=None, use_current_week=False):
         """
         Check if events exist for the target week in Neo4j
         
         Args:
             source_type: Optional filter by source type ('Senato' or 'Camera')
+            use_current_week: If True, check current week; if False, check next week
         
         Returns:
             tuple: (has_events: bool, event_count: int, week_string: str)
@@ -92,10 +114,19 @@ class Neo4jWeekChecker:
         self.connect()
         
         try:
-            monday, friday = self.get_next_monday_friday()
+            # Choose which week to check
+            if use_current_week:
+                monday, friday = self.get_current_week_monday_friday()
+                week_desc = "current week"
+            else:
+                monday, friday = self.get_next_monday_friday()
+                week_desc = "next week"
+            
             monday_str = monday.strftime("%Y-%m-%d")
             friday_str = friday.strftime("%Y-%m-%d")
             week_string = f"Settimana dal {monday.strftime('%-d %B')} al {friday.strftime('%-d %B %Y')}"
+            
+            print(f"Checking {week_desc}: {monday_str} to {friday_str}")
             
             with self.driver.session() as session:
                 # Build the query based on source type
@@ -125,7 +156,7 @@ class Neo4jWeekChecker:
                 record = result.single()
                 event_count = record["event_count"] if record else 0
                 
-                print(f"Found {event_count} {source_type or 'total'} events for week {monday_str} to {friday_str}")
+                print(f"Found {event_count} {source_type or 'total'} events for {week_desc} {monday_str} to {friday_str}")
                 
                 return event_count > 0, event_count, week_string
                 
@@ -186,7 +217,10 @@ def check_senato_neo4j():
     """Check if Senato events for the target week exist in Neo4j"""
     try:
         checker = Neo4jWeekChecker()
-        has_events, event_count, week_string = checker.check_events_exist_for_week(source_type='Senato')
+        has_events, event_count, week_string = checker.check_events_exist_for_week(
+            source_type='Senato', 
+            use_current_week=CHECK_CURRENT_WEEK
+        )
         
         if has_events:
             print(f"Already processed Senato for week: {week_string} ({event_count} events found)")
@@ -204,7 +238,10 @@ def check_camera_neo4j():
     """Check if Camera events for the target week exist in Neo4j"""
     try:
         checker = Neo4jWeekChecker()
-        has_events, event_count, week_string = checker.check_events_exist_for_week(source_type='Camera')
+        has_events, event_count, week_string = checker.check_events_exist_for_week(
+            source_type='Camera',
+            use_current_week=CHECK_CURRENT_WEEK
+        )
         
         if has_events:
             print(f"Already processed Camera for week: {week_string} ({event_count} events found)")
@@ -219,12 +256,12 @@ def check_camera_neo4j():
 
 
 def check_senato():
-    """Legacy function - now uses Neo4j instead of web scraping"""
+    """Check if Senato has new calendar - now uses Neo4j"""
     return check_senato_neo4j()
 
 
 def check_camera():
-    """Legacy function - now uses Neo4j instead of web scraping"""
+    """Check if Camera has new calendar - now uses Neo4j"""
     return check_camera_neo4j()
 
 
@@ -305,6 +342,13 @@ def base_agent(payload):
         mode = get_environment_mode()
         print(f"Running in {mode} mode")
         
+        # Show which week we're checking
+        print(f"CHECK_CURRENT_WEEK setting: {CHECK_CURRENT_WEEK}")
+        if CHECK_CURRENT_WEEK:
+            print("Will check CURRENT week (Mon-Fri of this week)")
+        else:
+            print("Will check NEXT week (upcoming Mon-Fri)")
+        
         # Download the latest prompt files only in dev mode
         if mode == "dev":
             print("Dev mode: Downloading latest prompt files")
@@ -348,7 +392,10 @@ def base_agent(payload):
 
         print(f"DEBUG: out_s = {out_s}, out_c = {out_c}")
         
-        # If both sources already have events for the target week
+        # IMPORTANT: Check if BOTH are already processed (both return False)
+        # out_s = True means Senato needs processing (no events found)
+        # out_s = False means Senato already processed (events found)
+        # Only skip everything if BOTH are False (both already have events)
         if out_s == False and out_c == False:
             return {
                 "name": "output",
